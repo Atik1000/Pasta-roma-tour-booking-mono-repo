@@ -360,4 +360,18 @@
   .text-balance {
     text-wrap: balance;
   }
+
+  /*
+   * A swipeable track keeps its own scrollbar hidden: the arrows and dots are
+   * the affordance, and a visible bar under the cards reads as a defect. The
+   * element still scrolls, so touch, trackpad and keyboard all keep working.
+   */
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
 }
