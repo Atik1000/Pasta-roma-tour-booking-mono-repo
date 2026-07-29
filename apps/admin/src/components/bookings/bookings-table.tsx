@@ -22,6 +22,7 @@ import {
   SelectValue,
   StatusPill,
   type ColumnDef,
+  useToast,
 } from '@pasta/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDateTime, formatMoney } from '@pasta/utils';
@@ -58,16 +59,15 @@ export function BookingsTable({
   const [page, setPage] = React.useState(1);
   const [busyRow, setBusyRow] = React.useState<string | null>(null);
   const [pendingCancel, setPendingCancel] = React.useState<AdminBooking | null>(null);
-  const [notice, setNotice] = React.useState<{ tone: 'ok' | 'error'; message: string } | null>(
-    null,
-  );
   const perPage = 10;
+
+  const toast = useToast();
 
   const queryClient = useQueryClient();
 
   function announce(tone: 'ok' | 'error', message: string) {
-    setNotice({ tone, message });
-    window.setTimeout(() => setNotice(null), 5000);
+    if (tone === 'ok') toast.success(message);
+    else toast.error('That did not work', message);
   }
 
   function failed(caught: unknown, fallback: string) {
@@ -278,19 +278,6 @@ export function BookingsTable({
 
   return (
     <div className="flex flex-col gap-6">
-      {notice ? (
-        <p
-          role={notice.tone === 'error' ? 'alert' : 'status'}
-          className={
-            notice.tone === 'error'
-              ? 'border-danger/30 bg-danger-soft text-danger-foreground rounded-card border px-4 py-3 text-sm'
-              : 'border-success/30 bg-success-soft text-success-foreground rounded-card border px-4 py-3 text-sm'
-          }
-        >
-          {notice.message}
-        </p>
-      ) : null}
-
       <Card>
         <CardContent className="grid gap-3 p-4 xl:grid-cols-[1fr_12rem_13rem_auto]">
           <div>

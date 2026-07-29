@@ -106,6 +106,7 @@ export {
   type StatCardProps,
 } from './components/states';
 export { StatusPill, type StatusPillProps } from './components/status-pill';
+export { ToastProvider, useToast, type ToastOptions, type ToastTone } from './components/toast';
 
 // --- domain -------------------------------------------------------------------
 export {

@@ -374,4 +374,56 @@
   .scrollbar-none::-webkit-scrollbar {
     display: none;
   }
+
+  /*
+   * Toast motion. Written out rather than pulled from an animation plugin so
+   * the project keeps one less dependency, and so the reduced-motion opt-out
+   * is impossible to forget.
+   */
+  .toast-animated[data-state='open'] {
+    animation: toast-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .toast-animated[data-state='closed'] {
+    animation: toast-out 140ms ease-in forwards;
+  }
+
+  .toast-animated[data-swipe='move'] {
+    transform: translateX(var(--radix-toast-swipe-move-x));
+  }
+
+  .toast-animated[data-swipe='cancel'] {
+    transform: translateX(0);
+    transition: transform 160ms ease-out;
+  }
+
+  .toast-animated[data-swipe='end'] {
+    animation: toast-out 140ms ease-in forwards;
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(1rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateX(1rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-animated,
+  .toast-animated[data-state='open'],
+  .toast-animated[data-state='closed'] {
+    animation: none;
+  }
 }

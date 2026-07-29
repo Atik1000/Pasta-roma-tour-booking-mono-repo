@@ -17,6 +17,7 @@ import {
   SelectValue,
   StatusPill,
   Textarea,
+  useToast,
 } from '@pasta/ui';
 import { formatClockTime, formatDate, formatDateTime, formatMoney } from '@pasta/utils';
 import {
@@ -76,12 +77,16 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
   const [error, setError] = React.useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = React.useState(false);
 
+  const toast = useToast();
+
   const queryClient = useQueryClient();
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['admin', 'booking'] });
 
   function documentFailed(caught: unknown, fallback: string) {
-    setError(isApiClientError(caught) ? caught.message : fallback);
+    const message = isApiClientError(caught) ? caught.message : fallback;
+    setError(message);
+    toast.error('That did not work', message);
   }
 
   /**
@@ -111,6 +116,7 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
     mutationFn: (itemId: string) => adminApi.admin.removeBookingItem(booking.reference, itemId),
     onSuccess: () => {
       setError(null);
+      toast.success('Tour removed', 'Its seats have been released.');
       setPendingRemoval(null);
       void refresh();
     },
@@ -124,6 +130,7 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
     mutationFn: () => adminApi.admin.invoicePdf(booking.reference),
     onSuccess: (pdf) => {
       setError(null);
+      toast.info('Invoice ready', 'Opening the print dialog.');
       printBlob(pdf);
     },
     onError: (caught) => documentFailed(caught, 'Could not produce that invoice.'),
@@ -133,6 +140,7 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
     mutationFn: () => adminApi.admin.ticketsPdf(booking.reference),
     onSuccess: (pdf) => {
       setError(null);
+      toast.success('Tickets downloaded');
       saveBlob(pdf, `${booking.reference}-tickets.pdf`);
     },
     onError: (caught) => documentFailed(caught, 'Could not produce those tickets.'),
@@ -142,6 +150,7 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
     mutationFn: () => adminApi.admin.sendConfirmation(booking.reference),
     onSuccess: (result) => {
       setError(null);
+      toast.success('Confirmation sent', `Emailed to ${result.sentTo} with tickets attached.`);
       setDocumentNotice(`Confirmation sent to ${result.sentTo}.`);
       // The resend leaves a note on the booking, so the timeline is refetched.
       void refresh();

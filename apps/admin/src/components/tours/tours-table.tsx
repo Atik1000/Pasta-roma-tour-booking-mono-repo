@@ -18,6 +18,7 @@ import {
   SelectValue,
   StatusPill,
   type ColumnDef,
+  useToast,
 } from '@pasta/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDateTime, formatDuration, formatMoney } from '@pasta/utils';
@@ -56,12 +57,15 @@ export function ToursTable({ locations }: ToursTableProps) {
   const rows = query.data?.data ?? [];
   const total = query.data?.meta.total ?? 0;
 
+  const toast = useToast();
+
   const queryClient = useQueryClient();
   const [pendingDelete, setPendingDelete] = React.useState<AdminTour | null>(null);
 
   const remove = useMutation({
     mutationFn: (id: string) => adminApi.admin.deleteTour(id),
     onSuccess: async () => {
+      toast.success('Tour deleted', `${pendingDelete?.title ?? 'It'} is no longer listed.`);
       setPendingDelete(null);
       await queryClient.invalidateQueries({ queryKey: ['admin', 'tours'] });
     },

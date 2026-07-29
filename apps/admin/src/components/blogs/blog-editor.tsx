@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
   Textarea,
+  useToast,
 } from '@pasta/ui';
 import { isApiClientError, type SaveBlogPayload } from '@pasta/api-client';
 import { slugify, wordCount } from '@pasta/utils';
@@ -81,15 +82,25 @@ export function BlogEditor({
   const [slugTouched, setSlugTouched] = React.useState(mode === 'edit');
   const [error, setError] = React.useState<string | null>(null);
 
+  const toast = useToast();
+
   const save = useMutation({
     mutationFn: (payload: SaveBlogPayload) =>
       value.id ? adminApi.admin.updateBlog(value.id, payload) : adminApi.admin.createBlog(payload),
     onSuccess: (result) => {
       setError(null);
+      toast.success(
+        value.id ? 'Post saved' : 'Post created',
+        value.status === 'PUBLISHED' ? 'It is live on the site.' : 'Saved as a draft.',
+      );
       if (!value.id) router.replace(`/blogs/${result.id}`);
     },
     onError: (caught: unknown) => {
-      setError(isApiClientError(caught) ? caught.message : 'Could not save. Please try again.');
+      const message = isApiClientError(caught)
+        ? caught.message
+        : 'Could not save. Please try again.';
+      setError(message);
+      toast.error('Post not saved', message);
     },
   });
   const contentRef = React.useRef<HTMLTextAreaElement>(null);
@@ -101,12 +112,15 @@ export function BlogEditor({
     mutationFn: (file: File) => adminApi.admin.uploadImage(file),
     onSuccess: (result) => {
       setCoverError(null);
+      toast.success('Image uploaded');
       patch({ coverImage: result.url });
     },
     onError: (caught: unknown) => {
-      setCoverError(
-        isApiClientError(caught) ? caught.message : 'That upload failed. Please try again.',
-      );
+      const message = isApiClientError(caught)
+        ? caught.message
+        : 'That upload failed. Please try again.';
+      setCoverError(message);
+      toast.error('Upload failed', message);
     },
   });
 

@@ -19,6 +19,7 @@ import {
   StatusPill,
   Switch,
   Textarea,
+  useToast,
 } from '@pasta/ui';
 import { isApiClientError, type SaveTourPayload } from '@pasta/api-client';
 import { formatDate } from '@pasta/utils';
@@ -98,11 +99,17 @@ export function TourEditor({
    * record inconsistent. The button label still reports the region the editor
    * pressed.
    */
+  const toast = useToast();
+
   const save = useMutation({
     mutationFn: (payload: SaveTourPayload) =>
       value.id ? adminApi.admin.updateTour(value.id, payload) : adminApi.admin.createTour(payload),
     onSuccess: async (result) => {
       setError(null);
+      toast.success(
+        value.id ? 'Tour saved' : 'Tour created',
+        value.id ? 'Your changes are live.' : 'You can now add photos and departures.',
+      );
       if (value.id) return;
 
       // The gallery could not be attached before the tour existed.
@@ -113,7 +120,11 @@ export function TourEditor({
       router.replace(`/tours/${result.id}`);
     },
     onError: (caught: unknown) => {
-      setError(isApiClientError(caught) ? caught.message : 'Could not save. Please try again.');
+      const message = isApiClientError(caught)
+        ? caught.message
+        : 'Could not save. Please try again.';
+      setError(message);
+      toast.error('Tour not saved', message);
     },
   });
 
@@ -266,6 +277,20 @@ export function TourEditor({
                   onChange={(event) => patch({ description: event.target.value })}
                 />
               </FormField>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold">Highlights, Inclusions &amp; Notes</h2>
+                  <p className="text-muted-foreground mt-0.5 text-sm">
+                    These three lists appear on the public tour page. Save when you are done.
+                  </p>
+                </div>
+                <SaveButton region="lists" />
+              </div>
             </CardContent>
           </Card>
 

@@ -18,6 +18,7 @@ import {
   SelectValue,
   StatusPill,
   type ColumnDef,
+  useToast,
 } from '@pasta/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDateTime } from '@pasta/utils';
@@ -51,12 +52,15 @@ export function BlogsTable({ categories }: { categories: string[] }) {
   const rows = query.data?.data ?? [];
   const total = query.data?.meta.total ?? 0;
 
+  const toast = useToast();
+
   const queryClient = useQueryClient();
   const [pendingDelete, setPendingDelete] = React.useState<AdminBlog | null>(null);
 
   const remove = useMutation({
     mutationFn: (id: string) => adminApi.admin.deleteBlog(id),
     onSuccess: async () => {
+      toast.success('Post deleted', `${pendingDelete?.title ?? 'It'} is no longer listed.`);
       setPendingDelete(null);
       await queryClient.invalidateQueries({ queryKey: ['admin', 'blogs'] });
     },

@@ -17,6 +17,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  useToast,
 } from '@pasta/ui';
 import { isApiClientError } from '@pasta/api-client';
 import { formatClockTime, formatMoney } from '@pasta/utils';
@@ -61,6 +62,8 @@ export function AddBookingItemDialog({
   const [quantity, setQuantity] = React.useState('1');
   const [error, setError] = React.useState<string | null>(null);
 
+  const toast = useToast();
+
   const tours = useQuery({
     queryKey: ['admin', 'tours', 'for-booking'],
     queryFn: () => adminApi.admin.tours({ status: 'PUBLISHED', limit: 100 }),
@@ -83,6 +86,7 @@ export function AddBookingItemDialog({
       adminApi.admin.addBookingItem(reference, { slotId, quantity: Number(quantity) || 1 }),
     onSuccess: () => {
       setError(null);
+      toast.success('Tour added', 'Seats are claimed and the total has been recalculated.');
       setTourId('');
       setSlotId('');
       setQuantity('1');
@@ -90,7 +94,9 @@ export function AddBookingItemDialog({
       onOpenChange(false);
     },
     onError: (caught: unknown) => {
-      setError(isApiClientError(caught) ? caught.message : 'Could not add that tour.');
+      const message = isApiClientError(caught) ? caught.message : 'Could not add that tour.';
+      setError(message);
+      toast.error('Tour not added', message);
     },
   });
 

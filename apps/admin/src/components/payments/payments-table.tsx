@@ -24,6 +24,7 @@ import {
   SelectValue,
   StatusPill,
   type ColumnDef,
+  useToast,
 } from '@pasta/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDateTime, formatMoney, humanizeEnum } from '@pasta/utils';
@@ -42,6 +43,8 @@ export function PaymentsTable() {
   const [refundError, setRefundError] = React.useState<string | null>(null);
   const [refundNotice, setRefundNotice] = React.useState<string | null>(null);
 
+  const toast = useToast();
+
   const queryClient = useQueryClient();
 
   /**
@@ -54,6 +57,7 @@ export function PaymentsTable() {
     onSuccess: (result) => {
       setRefundError(null);
       setRefundTarget(null);
+      toast.success('Refund submitted', result.message);
       setRefundNotice(result.message);
       // Stripe writes the local record via `charge.refunded`, so the row may
       // take a moment to catch up.
@@ -61,9 +65,11 @@ export function PaymentsTable() {
       window.setTimeout(() => setRefundNotice(null), 6000);
     },
     onError: (caught: unknown) => {
-      setRefundError(
-        isApiClientError(caught) ? caught.message : 'That refund could not be submitted.',
-      );
+      const message = isApiClientError(caught)
+        ? caught.message
+        : 'That refund could not be submitted.';
+      setRefundError(message);
+      toast.error('Refund failed', message);
     },
   });
   const perPage = 10;

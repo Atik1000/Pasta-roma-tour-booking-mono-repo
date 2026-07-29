@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-import { Button, Card, CardContent } from '@pasta/ui';
+import { Button, Card, CardContent, useToast } from '@pasta/ui';
 import { isApiClientError } from '@pasta/api-client';
 import { useMutation } from '@tanstack/react-query';
 import { Upload, X } from 'lucide-react';
@@ -29,6 +29,8 @@ export function TourGalleryPanel({
   gallery: string[];
   onChange: (next: string[]) => void;
 }) {
+  const toast = useToast();
+
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -43,21 +45,31 @@ export function TourGalleryPanel({
     },
     onSuccess: (urls) => {
       setError(null);
+      toast.success(
+        urls.length === 1 ? 'Photo uploaded' : `${urls.length} photos uploaded`,
+        tourId ? 'The gallery has been saved.' : 'They attach when you save the tour.',
+      );
       const next = [...gallery, ...urls];
       onChange(next);
       if (tourId) persist.mutate(next);
     },
     onError: (caught: unknown) => {
-      setError(isApiClientError(caught) ? caught.message : 'That upload failed. Please try again.');
+      const message = isApiClientError(caught)
+        ? caught.message
+        : 'That upload failed. Please try again.';
+      setError(message);
+      toast.error('Upload failed', message);
     },
   });
 
   const persist = useMutation({
     mutationFn: (urls: string[]) => adminApi.admin.setTourImages(tourId!, urls),
     onError: (caught: unknown) => {
-      setError(
-        isApiClientError(caught) ? caught.message : 'Could not save the gallery. Please try again.',
-      );
+      const message = isApiClientError(caught)
+        ? caught.message
+        : 'Could not save the gallery. Please try again.';
+      setError(message);
+      toast.error('Gallery not saved', message);
     },
   });
 

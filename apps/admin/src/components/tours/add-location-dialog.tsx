@@ -12,6 +12,7 @@ import {
   DialogTitle,
   FormField,
   Input,
+  useToast,
 } from '@pasta/ui';
 import { isApiClientError } from '@pasta/api-client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -33,6 +34,8 @@ export function AddLocationDialog({
   const [country, setCountry] = React.useState('Italy');
   const [error, setError] = React.useState<string | null>(null);
 
+  const toast = useToast();
+
   const queryClient = useQueryClient();
 
   const create = useMutation({
@@ -40,16 +43,17 @@ export function AddLocationDialog({
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['locations'] });
       void queryClient.invalidateQueries({ queryKey: ['admin', 'tours'] });
+      toast.success('Location added', `${name.trim()} is now available to tours.`);
       setName('');
       setError(null);
       onOpenChange(false);
     },
     onError: (caught: unknown) => {
-      setError(
-        isApiClientError(caught)
-          ? caught.message
-          : 'Could not add that location. Please try again.',
-      );
+      const message = isApiClientError(caught)
+        ? caught.message
+        : 'Could not add that location. Please try again.';
+      setError(message);
+      toast.error('Location not added', message);
     },
   });
 

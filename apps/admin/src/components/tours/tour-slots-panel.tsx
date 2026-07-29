@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-import { Button, Card, CardContent, Input, Skeleton } from '@pasta/ui';
+import { Button, Card, CardContent, Input, Skeleton, useToast } from '@pasta/ui';
 import { isApiClientError, type AdminSlot } from '@pasta/api-client';
 import { formatClockTime, formatDate } from '@pasta/utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -36,6 +36,8 @@ export function TourSlotsPanel({ tourId }: { tourId?: string }) {
   const [pendingDelete, setPendingDelete] = React.useState<AdminSlot | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
+  const toast = useToast();
+
   const queryClient = useQueryClient();
   const key = ['admin', 'tours', tourId, 'slots', date];
 
@@ -46,7 +48,9 @@ export function TourSlotsPanel({ tourId }: { tourId?: string }) {
   });
 
   function fail(caught: unknown, fallback: string) {
-    setError(isApiClientError(caught) ? caught.message : fallback);
+    const message = isApiClientError(caught) ? caught.message : fallback;
+    setError(message);
+    toast.error('That change was not saved', message);
   }
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: key });
@@ -57,6 +61,7 @@ export function TourSlotsPanel({ tourId }: { tourId?: string }) {
     onSuccess: () => {
       setError(null);
       setDraft(null);
+      toast.success('Departure added');
       void invalidate();
     },
     onError: (caught) => fail(caught, 'Could not add that time slot.'),
@@ -71,6 +76,7 @@ export function TourSlotsPanel({ tourId }: { tourId?: string }) {
       }),
     onSuccess: (_result, input) => {
       setError(null);
+      toast.success('Capacity updated');
       setEditing((current) => {
         const next = { ...current };
         delete next[input.slot.id];
@@ -86,6 +92,7 @@ export function TourSlotsPanel({ tourId }: { tourId?: string }) {
     onSuccess: () => {
       setError(null);
       setPendingDelete(null);
+      toast.success('Departure removed', 'Its seats are back in the pool.');
       void invalidate();
     },
     onError: (caught) => {
