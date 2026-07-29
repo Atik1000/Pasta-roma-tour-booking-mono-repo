@@ -25,7 +25,7 @@ import {
 } from '@pasta/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDateTime, formatMoney } from '@pasta/utils';
-import { Eye, Filter, MoreVertical, Printer, RotateCcw, Search, X } from 'lucide-react';
+import { Eye, MoreVertical, Printer, RotateCcw, Search, X } from 'lucide-react';
 
 import { isApiClientError, type AdminBooking } from '@pasta/api-client';
 
@@ -292,7 +292,7 @@ export function BookingsTable({
       ) : null}
 
       <Card>
-        <CardContent className="grid gap-3 p-4 xl:grid-cols-[1fr_12rem_13rem_auto_auto]">
+        <CardContent className="grid gap-3 p-4 xl:grid-cols-[1fr_12rem_13rem_auto]">
           <div>
             <label htmlFor="booking-search" className="sr-only">
               Search bookings
@@ -344,10 +344,6 @@ export function BookingsTable({
               </SelectContent>
             </Select>
           </div>
-
-          <Button variant="outline" className="self-end" leadingIcon={<Filter aria-hidden />}>
-            Filters
-          </Button>
 
           <Button
             variant="ghost"

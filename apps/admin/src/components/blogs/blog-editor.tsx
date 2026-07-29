@@ -22,6 +22,7 @@ import {
 import { isApiClientError, type SaveBlogPayload } from '@pasta/api-client';
 import { slugify, wordCount } from '@pasta/utils';
 import { useMutation } from '@tanstack/react-query';
+import { env } from '@/lib/env';
 import { adminApi } from '@/lib/session';
 
 import {
@@ -169,7 +170,20 @@ export function BlogEditor({
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="outline" leadingIcon={<Eye aria-hidden />}>
+          {/*
+            Previews the post on the public site. A post that has never been
+            saved has no URL to open, so the button says so rather than
+            opening a 404.
+          */}
+          <Button
+            variant="outline"
+            leadingIcon={<Eye aria-hidden />}
+            disabled={!value.id || !value.slug}
+            title={value.id ? undefined : 'Save the post first'}
+            onClick={() =>
+              window.open(`${env.NEXT_PUBLIC_SITE_URL}/blog/${value.slug}`, '_blank', 'noopener')
+            }
+          >
             Preview
           </Button>
           <Button

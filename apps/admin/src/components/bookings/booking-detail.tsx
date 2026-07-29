@@ -44,6 +44,12 @@ import { ConfirmDialog } from '@/components/common/confirm-dialog';
 import { printBlob, saveBlob } from '@/lib/download';
 import { adminApi } from '@/lib/session';
 
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  CARD: 'Credit Card',
+  PAYPAL: 'PayPal',
+  APPLE_PAY: 'Apple Pay',
+};
+
 /**
  * Booking detail. Everything on this screen is editable — customer, ticket
  * holders, quantities, payment record — because the design shows inputs rather
@@ -566,46 +572,52 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
                 Payment Details
               </h2>
 
-              <div className="flex flex-col gap-4">
-                <FormField label="Payment Method">
-                  <Select defaultValue={booking.payment?.method ?? 'CARD'}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="CARD">Credit Card</SelectItem>
-                      <SelectItem value="PAYPAL">PayPal</SelectItem>
-                      <SelectItem value="APPLE_PAY">Apple Pay</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </FormField>
-
-                <FormField label="Transaction ID">
-                  <Input defaultValue={booking.payment?.transactionId ?? ''} />
-                </FormField>
-
-                <FormField label="Paid Amount">
-                  <Input
-                    defaultValue={(
-                      (booking.payment?.amountMinor ?? booking.totalMinor) / 100
-                    ).toFixed(2)}
-                  />
-                </FormField>
-
-                <FormField label="Payment Date">
-                  <Input
-                    type="datetime-local"
-                    defaultValue={booking.payment?.paidAt?.slice(0, 16) ?? ''}
-                  />
-                </FormField>
-
-                <div className="flex justify-end gap-2.5">
-                  <Button variant="ghost" size="sm">
-                    Cancel
-                  </Button>
-                  <Button size="sm">Save Changes</Button>
-                </div>
-              </div>
+              {/*
+                Read-only on purpose. This is the record of what the payment
+                processor actually did; letting an operator type into it would
+                let the system claim money was captured that never was, and
+                nothing downstream — invoices, exports, the revenue figures —
+                could be trusted again. Refunds go through the Payments screen,
+                which asks Stripe and lets the webhook write the result back.
+              */}
+              {booking.payment ? (
+                <dl className="flex flex-col gap-3 text-sm">
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Method</dt>
+                    <dd className="font-medium">
+                      {PAYMENT_METHOD_LABELS[booking.payment.method] ?? booking.payment.method}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Status</dt>
+                    <dd>
+                      <StatusPill status={booking.payment.status} />
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Amount</dt>
+                    <dd className="font-medium tabular-nums">
+                      {formatMoney(booking.payment.amountMinor, booking.currency)}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Paid on</dt>
+                    <dd className="font-medium">
+                      {booking.payment.paidAt ? formatDateTime(booking.payment.paidAt) : 'Not yet'}
+                    </dd>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <dt className="text-muted-foreground">Transaction</dt>
+                    <dd className="break-all font-mono text-xs">
+                      {booking.payment.transactionId ?? 'None recorded'}
+                    </dd>
+                  </div>
+                </dl>
+              ) : (
+                <p className="text-muted-foreground rounded-field border-border border border-dashed p-5 text-center text-sm">
+                  No payment has been taken for this booking yet.
+                </p>
+              )}
             </CardContent>
           </Card>
 

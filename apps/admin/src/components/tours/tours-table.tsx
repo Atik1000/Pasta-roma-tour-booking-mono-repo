@@ -21,7 +21,7 @@ import {
 } from '@pasta/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDateTime, formatDuration, formatMoney } from '@pasta/utils';
-import { Eye, Filter, Pencil, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { Eye, Pencil, RotateCcw, Search, Trash2 } from 'lucide-react';
 
 import type { AdminTour } from '@pasta/api-client';
 
@@ -152,7 +152,7 @@ export function ToursTable({ locations }: ToursTableProps) {
   return (
     <div className="flex flex-col gap-6">
       <Card>
-        <CardContent className="grid gap-3 p-4 lg:grid-cols-[1fr_13rem_13rem_auto_auto]">
+        <CardContent className="grid gap-3 p-4 lg:grid-cols-[1fr_13rem_13rem_auto]">
           <div>
             <label htmlFor="tour-search" className="sr-only">
               Search tours
@@ -216,10 +216,6 @@ export function ToursTable({ locations }: ToursTableProps) {
               </SelectContent>
             </Select>
           </div>
-
-          <Button variant="outline" className="self-end" leadingIcon={<Filter aria-hidden />}>
-            Filters
-          </Button>
 
           <Button
             variant="ghost"
