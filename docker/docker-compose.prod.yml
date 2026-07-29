@@ -82,8 +82,11 @@ services:
       THROTTLE_TTL_SECONDS: ${THROTTLE_TTL_SECONDS:-60}
       THROTTLE_LIMIT: ${THROTTLE_LIMIT:-120}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+    # Bound to loopback: a reverse proxy terminates TLS in front. Publishing on
+    # every interface would leave the API reachable over plain HTTP on a public
+    # IP, bypassing both TLS and any rate limiting at the edge.
     ports:
-      - "${API_PORT:-4000}:4000"
+      - "127.0.0.1:${API_PORT:-4000}:4000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -102,7 +105,7 @@ services:
         NEXT_PUBLIC_ADMIN_URL: ${ADMIN_URL}
     restart: always
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
     depends_on:
       - api
 
@@ -115,7 +118,7 @@ services:
         NEXT_PUBLIC_ADMIN_URL: ${ADMIN_URL}
     restart: always
     ports:
-      - "${ADMIN_PORT:-3001}:3001"
+      - "127.0.0.1:${ADMIN_PORT:-3001}:3001"
     depends_on:
       - api
 
