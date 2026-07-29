@@ -12,14 +12,20 @@ import {
   Post,
   Put,
   Query,
+  Res,
+  StreamableFile,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiProduces, ApiQuery, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 
 import {
   ApiEnvelopeResponse,
   ApiPaginatedResponse,
 } from '../../common/decorators/api-response.decorator';
 import { CurrentUser, Roles } from '../../common/decorators/auth.decorators';
+import { DocumentsModule } from '../documents/documents.module';
+import { DocumentsService } from '../documents/documents.service';
+
 import { AdminService } from './admin.service';
 import { AdminWriteService } from './admin-write.service';
 import {
@@ -58,6 +64,7 @@ export class AdminController {
   constructor(
     private readonly admin: AdminService,
     private readonly write: AdminWriteService,
+    private readonly documents: DocumentsService,
   ) {}
 
   // --- dashboard -------------------------------------------------------------
@@ -145,6 +152,32 @@ export class AdminController {
   @ApiPaginatedResponse(AdminBookingDto)
   listBookings(@Query() query: ListAdminBookingsQueryDto) {
     return this.admin.listBookings(query);
+  }
+
+  /**
+   * Declared before `bookings/:reference` — Nest matches in declaration order,
+   * so the parameterised route would otherwise treat "export" as a reference.
+   */
+  @Get('bookings/export')
+  @ApiOperation({ summary: 'Export bookings as CSV' })
+  @ApiProduces('text/csv')
+  @ApiQuery({ name: 'search', required: false })
+  @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'from', required: false, description: 'Booked on or after, YYYY-MM-DD.' })
+  @ApiQuery({ name: 'to', required: false, description: 'Booked on or before, YYYY-MM-DD.' })
+  async exportBookings(
+    @Res({ passthrough: true }) response: Response,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ): Promise<StreamableFile> {
+    const csv = await this.documents.bookingsCsv({ search, status, from, to });
+
+    response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    response.setHeader('Content-Disposition', 'attachment; filename="bookings.csv"');
+
+    return new StreamableFile(Buffer.from(csv, 'utf8'));
   }
 
   @Get('bookings/:reference')
@@ -284,6 +317,13 @@ export class AdminController {
     return { message: 'Booking cancelled and seats released.' };
   }
 
+  @Post('bookings/:reference/send-confirmation')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Re-send the confirmation email with e-tickets attached' })
+  sendConfirmation(@Param('reference') reference: string) {
+    return this.write.sendConfirmation(reference);
+  }
+
   @Post('bookings/:reference/notes')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Add an internal note to a booking' })
@@ -298,6 +338,7 @@ export class AdminController {
 }
 
 @Module({
+  imports: [DocumentsModule],
   controllers: [AdminController],
   providers: [AdminService, AdminWriteService],
 })

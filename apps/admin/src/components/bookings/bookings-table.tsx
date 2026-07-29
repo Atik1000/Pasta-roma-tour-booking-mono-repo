@@ -23,20 +23,106 @@ import {
   StatusPill,
   type ColumnDef,
 } from '@pasta/ui';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDateTime, formatMoney } from '@pasta/utils';
 import { Eye, Filter, MoreVertical, Printer, RotateCcw, Search, X } from 'lucide-react';
 
-import type { AdminBooking } from '@pasta/api-client';
+import { isApiClientError, type AdminBooking } from '@pasta/api-client';
 
+import { ConfirmDialog } from '@/components/common/confirm-dialog';
+import { printBlob, saveBlob } from '@/lib/download';
 import { adminApi } from '@/lib/session';
 
-export function BookingsTable() {
-  const [search, setSearch] = React.useState('');
-  const [status, setStatus] = React.useState('ALL');
-  const [payment, setPayment] = React.useState('ALL');
+export interface BookingFilters {
+  search: string;
+  status: string;
+  payment: string;
+}
+
+/**
+ * The filters live above this component so the header's Export button can send
+ * the same narrowing to the server — an export that ignored the filters would
+ * not match what the operator is looking at.
+ */
+export function BookingsTable({
+  filters,
+  onFiltersChange,
+}: {
+  filters: BookingFilters;
+  onFiltersChange: (next: BookingFilters) => void;
+}) {
+  const { search, status, payment } = filters;
+  const setSearch = (next: string) => onFiltersChange({ ...filters, search: next });
+  const setStatus = (next: string) => onFiltersChange({ ...filters, status: next });
+  const setPayment = (next: string) => onFiltersChange({ ...filters, payment: next });
   const [page, setPage] = React.useState(1);
+  const [busyRow, setBusyRow] = React.useState<string | null>(null);
+  const [pendingCancel, setPendingCancel] = React.useState<AdminBooking | null>(null);
+  const [notice, setNotice] = React.useState<{ tone: 'ok' | 'error'; message: string } | null>(
+    null,
+  );
   const perPage = 10;
+
+  const queryClient = useQueryClient();
+
+  function announce(tone: 'ok' | 'error', message: string) {
+    setNotice({ tone, message });
+    window.setTimeout(() => setNotice(null), 5000);
+  }
+
+  function failed(caught: unknown, fallback: string) {
+    announce('error', isApiClientError(caught) ? caught.message : fallback);
+  }
+
+  /**
+   * Row actions are one-at-a-time: `busyRow` disables the row being worked on
+   * so a double click cannot send two confirmation emails.
+   */
+  async function runRowAction(reference: string, action: () => Promise<void>) {
+    setBusyRow(reference);
+    try {
+      await action();
+    } finally {
+      setBusyRow(null);
+    }
+  }
+
+  const printInvoice = (reference: string) =>
+    runRowAction(reference, () =>
+      adminApi.admin
+        .invoicePdf(reference)
+        .then(printBlob)
+        .catch((caught: unknown) => failed(caught, 'Could not produce that invoice.')),
+    );
+
+  const downloadTickets = (reference: string) =>
+    runRowAction(reference, () =>
+      adminApi.admin
+        .ticketsPdf(reference)
+        .then((pdf) => saveBlob(pdf, `${reference}-tickets.pdf`))
+        .catch((caught: unknown) => failed(caught, 'Could not produce those tickets.')),
+    );
+
+  const resendConfirmation = (reference: string) =>
+    runRowAction(reference, () =>
+      adminApi.admin
+        .sendConfirmation(reference)
+        .then((result) => announce('ok', `Confirmation sent to ${result.sentTo}.`))
+        .catch((caught: unknown) => failed(caught, 'Could not send that email.')),
+    );
+
+  const cancelBooking = useMutation({
+    mutationFn: (booking: AdminBooking) => adminApi.admin.cancelBooking(booking.reference),
+    onSuccess: (_result, booking) => {
+      setPendingCancel(null);
+      announce('ok', `Booking ${booking.reference} cancelled.`);
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'bookings'] });
+    },
+    onError: (caught) => {
+      setPendingCancel(null);
+      failed(caught, 'Could not cancel that booking.');
+    },
+  });
 
   const query = useQuery({
     queryKey: ['admin', 'bookings', { search, status, payment, page }],
@@ -145,6 +231,8 @@ export function BookingsTable() {
               variant="subtle"
               size="icon"
               aria-label={`Print invoice for ${row.original.reference}`}
+              disabled={busyRow === row.original.reference}
+              onClick={() => void printInvoice(row.original.reference)}
             >
               <Printer aria-hidden />
             </Button>
@@ -159,9 +247,20 @@ export function BookingsTable() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
-                <DropdownMenuItem>Resend confirmation</DropdownMenuItem>
-                <DropdownMenuItem>Download tickets</DropdownMenuItem>
-                <DropdownMenuItem destructive>
+                <DropdownMenuItem
+                  disabled={row.original.status === 'CANCELLED'}
+                  onSelect={() => void resendConfirmation(row.original.reference)}
+                >
+                  Resend confirmation
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void downloadTickets(row.original.reference)}>
+                  Download tickets
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  destructive
+                  disabled={row.original.status === 'CANCELLED'}
+                  onSelect={() => setPendingCancel(row.original)}
+                >
                   <X aria-hidden />
                   Cancel booking
                 </DropdownMenuItem>
@@ -171,13 +270,27 @@ export function BookingsTable() {
         ),
       },
     ],
-    [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [busyRow],
   );
 
   const hasFilters = search !== '' || status !== 'ALL' || payment !== 'ALL';
 
   return (
     <div className="flex flex-col gap-6">
+      {notice ? (
+        <p
+          role={notice.tone === 'error' ? 'alert' : 'status'}
+          className={
+            notice.tone === 'error'
+              ? 'border-danger/30 bg-danger-soft text-danger-foreground rounded-card border px-4 py-3 text-sm'
+              : 'border-success/30 bg-success-soft text-success-foreground rounded-card border px-4 py-3 text-sm'
+          }
+        >
+          {notice.message}
+        </p>
+      ) : null}
+
       <Card>
         <CardContent className="grid gap-3 p-4 xl:grid-cols-[1fr_12rem_13rem_auto_auto]">
           <div>
@@ -271,6 +384,20 @@ export function BookingsTable() {
           onPageChange={setPage}
         />
       </div>
+
+      <ConfirmDialog
+        open={Boolean(pendingCancel)}
+        onOpenChange={(open) => !open && setPendingCancel(null)}
+        title="Cancel this booking?"
+        description={
+          pendingCancel
+            ? `Booking ${pendingCancel.reference} will be cancelled and its seats released. This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Cancel booking"
+        isPending={cancelBooking.isPending}
+        onConfirm={() => pendingCancel && cancelBooking.mutate(pendingCancel)}
+      />
     </div>
   );
 }

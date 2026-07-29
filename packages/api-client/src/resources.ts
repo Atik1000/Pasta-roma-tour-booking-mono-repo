@@ -548,6 +548,32 @@ export class AdminResource {
     return this.http.get<AdminTourDetail>(`/admin/tours/${id}`);
   }
 
+  /** The invoice PDF, for printing. */
+  invoicePdf(reference: string): Promise<Blob> {
+    return this.http.download(`/admin/bookings/${reference}/invoice`);
+  }
+
+  /** Every e-ticket in the booking, one page each. */
+  ticketsPdf(reference: string): Promise<Blob> {
+    return this.http.download(`/admin/bookings/${reference}/tickets`);
+  }
+
+  /** The bookings table as CSV, narrowed by the same filters. */
+  exportBookings(
+    params: {
+      search?: string;
+      status?: string;
+      from?: string;
+      to?: string;
+    } = {},
+  ): Promise<Blob> {
+    return this.http.download('/admin/bookings/export', { params });
+  }
+
+  sendConfirmation(reference: string): Promise<{ sentTo: string }> {
+    return this.http.post<{ sentTo: string }>(`/admin/bookings/${reference}/send-confirmation`);
+  }
+
   blog(id: string): Promise<AdminBlogDetail> {
     return this.http.get<AdminBlogDetail>(`/admin/blogs/${id}`);
   }
@@ -702,6 +728,10 @@ export interface TravellerBookingTour {
   time: string;
   location: string;
   travellers: number;
+  unitPriceMinor: number;
+  amountMinor: number;
+  meetingPoint: string | null;
+  meetingPointAddress: string | null;
 }
 
 export interface TravellerBooking {
@@ -709,6 +739,8 @@ export interface TravellerBooking {
   bookedAt: string;
   status: BookingStatusValue;
   paymentStatus: PaymentStatusValue;
+  subtotalMinor: number;
+  bookingFeeMinor: number;
   totalMinor: number;
   currency: CurrencyCode;
   tours: TravellerBookingTour[];
@@ -724,5 +756,17 @@ export class BookingsResource {
 
   byToken(token: string): Promise<TravellerBooking[]> {
     return this.http.get<TravellerBooking[]>(`/bookings/lookup/${encodeURIComponent(token)}`);
+  }
+
+  /**
+   * Your own e-tickets. The same signed token that revealed the booking is
+   * required again — a reference is printed on emails and is not a secret.
+   */
+  ticketsPdf(reference: string, token: string): Promise<Blob> {
+    return this.http.download(`/bookings/${reference}/tickets`, { params: { token } });
+  }
+
+  invoicePdf(reference: string, token: string): Promise<Blob> {
+    return this.http.download(`/bookings/${reference}/invoice`, { params: { token } });
   }
 }

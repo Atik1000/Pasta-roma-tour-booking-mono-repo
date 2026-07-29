@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 import { JwtModule, JwtService } from '@nestjs/jwt';
-import { ApiOperation, ApiProperty, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { IsEmail, MaxLength } from 'class-validator';
 
@@ -40,6 +40,10 @@ export class BookingTourDto {
   @ApiProperty() time!: string;
   @ApiProperty() location!: string;
   @ApiProperty() travellers!: number;
+  @ApiProperty({ description: 'Per-ticket price in minor units.' }) unitPriceMinor!: number;
+  @ApiProperty({ description: 'Line total in minor units.' }) amountMinor!: number;
+  @ApiPropertyOptional({ nullable: true }) meetingPoint!: string | null;
+  @ApiPropertyOptional({ nullable: true }) meetingPointAddress!: string | null;
 }
 
 export class TravellerBookingDto {
@@ -47,6 +51,8 @@ export class TravellerBookingDto {
   @ApiProperty() bookedAt!: string;
   @ApiProperty() status!: string;
   @ApiProperty() paymentStatus!: string;
+  @ApiProperty() subtotalMinor!: number;
+  @ApiProperty() bookingFeeMinor!: number;
   @ApiProperty() totalMinor!: number;
   @ApiProperty({ enum: ['EUR', 'USD'] }) currency!: 'EUR' | 'USD';
   @ApiProperty({ type: [BookingTourDto] }) tours!: BookingTourDto[];
@@ -128,7 +134,20 @@ export class BookingsService {
     const bookings = await this.prisma.booking.findMany({
       where: { customer: { email }, deletedAt: null },
       orderBy: { bookedAt: 'desc' },
-      include: { items: true },
+      include: {
+        items: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            tour: {
+              select: {
+                meetingPointTitle: true,
+                meetingPointAddress: true,
+                location: { select: { name: true } },
+              },
+            },
+          },
+        },
+      },
     });
 
     return bookings.map((booking) => ({
@@ -136,14 +155,23 @@ export class BookingsService {
       bookedAt: booking.bookedAt.toISOString(),
       status: booking.status,
       paymentStatus: booking.paymentStatus,
+      subtotalMinor: booking.subtotal,
+      bookingFeeMinor: booking.bookingFee,
       totalMinor: booking.total,
       currency: booking.currency,
       tours: booking.items.map((item) => ({
         title: item.tourTitle,
         date: item.date.toISOString().slice(0, 10),
         time: item.time,
-        location: '',
+        // The tour can be renamed or moved after booking; the departure and
+        // price are denormalised on the item, but the meeting point is not,
+        // so it is read live and may legitimately have changed.
+        location: item.tour.location.name,
         travellers: item.quantity,
+        unitPriceMinor: item.unitPrice,
+        amountMinor: item.amount,
+        meetingPoint: item.tour.meetingPointTitle,
+        meetingPointAddress: item.tour.meetingPointAddress,
       })),
     }));
   }

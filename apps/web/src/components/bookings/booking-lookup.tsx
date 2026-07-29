@@ -20,6 +20,7 @@ import {
 import { isApiClientError, type TravellerBooking } from '@pasta/api-client';
 
 import { browserApi } from '@/lib/browser-api';
+import { saveBlob } from '@/lib/download';
 
 /**
  * Find-your-bookings by email.
@@ -38,6 +39,9 @@ export function BookingLookup() {
   const [sentTo, setSentTo] = React.useState<string | null>(null);
   const [bookings, setBookings] = React.useState<TravellerBooking[] | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
+  const [expanded, setExpanded] = React.useState<string | null>(null);
+  const [busyReference, setBusyReference] = React.useState<string | null>(null);
+  const [documentError, setDocumentError] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | undefined>();
 
   // Arriving from the emailed link: the token is the credential, not the address.
@@ -66,6 +70,34 @@ export function BookingLookup() {
       cancelled = true;
     };
   }, [token]);
+
+  /**
+   * Documents are fetched with the same signed token that revealed the
+   * bookings, so a reference alone never yields somebody else's tickets.
+   */
+  async function download(reference: string, kind: 'tickets' | 'invoice') {
+    if (!token) return;
+
+    setBusyReference(reference);
+    setDocumentError(null);
+
+    try {
+      const pdf =
+        kind === 'tickets'
+          ? await browserApi.bookings.ticketsPdf(reference, token)
+          : await browserApi.bookings.invoicePdf(reference, token);
+
+      saveBlob(pdf, `${reference}-${kind}.pdf`);
+    } catch (caught: unknown) {
+      setDocumentError(
+        isApiClientError(caught)
+          ? caught.message
+          : 'That download failed. Your link may have expired — request a new one.',
+      );
+    } finally {
+      setBusyReference(null);
+    }
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -235,12 +267,87 @@ export function BookingLookup() {
                         ))}
                       </ul>
 
+                      {expanded === booking.reference ? (
+                        <div className="border-border mt-5 border-t pt-5">
+                          <h3 className="text-sm font-medium">Where to meet</h3>
+                          <ul className="mt-2 flex flex-col gap-3">
+                            {booking.tours.map((tour) => (
+                              <li
+                                key={`meet-${tour.title}-${tour.date}-${tour.time}`}
+                                className="text-sm"
+                              >
+                                <p className="font-medium">{tour.title}</p>
+                                <p className="text-muted-foreground">
+                                  {tour.meetingPoint ?? tour.location}
+                                  {tour.meetingPointAddress ? ` — ${tour.meetingPointAddress}` : ''}
+                                </p>
+                              </li>
+                            ))}
+                          </ul>
+
+                          <h3 className="mt-5 text-sm font-medium">Price breakdown</h3>
+                          <dl className="mt-2 flex flex-col gap-1.5 text-sm">
+                            {booking.tours.map((tour) => (
+                              <div
+                                key={`price-${tour.title}-${tour.date}-${tour.time}`}
+                                className="flex justify-between gap-4"
+                              >
+                                <dt className="text-muted-foreground">
+                                  {tour.title} × {tour.travellers} @{' '}
+                                  {formatMoney(tour.unitPriceMinor, booking.currency)}
+                                </dt>
+                                <dd>{formatMoney(tour.amountMinor, booking.currency)}</dd>
+                              </div>
+                            ))}
+                            <div className="flex justify-between gap-4">
+                              <dt className="text-muted-foreground">Subtotal</dt>
+                              <dd>{formatMoney(booking.subtotalMinor, booking.currency)}</dd>
+                            </div>
+                            {booking.bookingFeeMinor > 0 ? (
+                              <div className="flex justify-between gap-4">
+                                <dt className="text-muted-foreground">Booking fee</dt>
+                                <dd>{formatMoney(booking.bookingFeeMinor, booking.currency)}</dd>
+                              </div>
+                            ) : null}
+                            <div className="border-border mt-1 flex justify-between gap-4 border-t pt-2 font-semibold">
+                              <dt>Total</dt>
+                              <dd>{formatMoney(booking.totalMinor, booking.currency)}</dd>
+                            </div>
+                          </dl>
+
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="mt-4"
+                            leadingIcon={<Download aria-hidden />}
+                            disabled={busyReference === booking.reference}
+                            onClick={() => void download(booking.reference, 'invoice')}
+                          >
+                            Download Invoice
+                          </Button>
+                        </div>
+                      ) : null}
+
                       <div className="mt-5 flex flex-wrap justify-end gap-2.5">
-                        <Button variant="outline" size="sm">
-                          View Details
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          aria-expanded={expanded === booking.reference}
+                          onClick={() =>
+                            setExpanded((current) =>
+                              current === booking.reference ? null : booking.reference,
+                            )
+                          }
+                        >
+                          {expanded === booking.reference ? 'Hide Details' : 'View Details'}
                         </Button>
                         {booking.status === 'CONFIRMED' ? (
-                          <Button size="sm" leadingIcon={<Download aria-hidden />}>
+                          <Button
+                            size="sm"
+                            leadingIcon={<Download aria-hidden />}
+                            isLoading={busyReference === booking.reference}
+                            onClick={() => void download(booking.reference, 'tickets')}
+                          >
                             Download Ticket
                           </Button>
                         ) : null}
@@ -250,6 +357,15 @@ export function BookingLookup() {
                 </li>
               ))}
             </ul>
+
+            {documentError ? (
+              <p
+                role="alert"
+                className="border-danger/30 bg-danger-soft text-danger-foreground rounded-card mt-4 border px-4 py-3 text-sm"
+              >
+                {documentError}
+              </p>
+            ) : null}
           </>
         ) : null}
       </div>

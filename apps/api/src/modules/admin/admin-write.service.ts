@@ -3,6 +3,8 @@ import { slugify } from '@pasta/utils';
 
 import { BusinessErrorCode, BusinessException } from '../../common/exceptions/business.exception';
 import { PrismaService } from '../../database/prisma.service';
+import { DocumentsService } from '../documents/documents.service';
+import { MailService } from '../mail/mail.service';
 import type {
   SaveBlogDto,
   SaveLocationDto,
@@ -15,7 +17,11 @@ import type {
 
 @Injectable()
 export class AdminWriteService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly documents: DocumentsService,
+    private readonly mail: MailService,
+  ) {}
 
   /** Appends `-2`, `-3`… until the slug is free. */
   private async uniqueSlug(
@@ -165,6 +171,50 @@ export class AdminWriteService {
       where: { id },
       data: { deletedAt: new Date(), status: 'DRAFT' },
     });
+  }
+
+  // --- confirmation email ----------------------------------------------------
+
+  /**
+   * Re-sends the booking confirmation with the e-tickets attached. Used when a
+   * traveller says the original never arrived, so it deliberately rebuilds the
+   * documents rather than resending a stored copy.
+   */
+  async sendConfirmation(reference: string): Promise<{ sentTo: string }> {
+    const booking = await this.documents.loadBooking(reference);
+
+    if (booking.status === 'CANCELLED') {
+      throw new BusinessException(
+        BusinessErrorCode.BookingNotCancellable,
+        'That booking is cancelled, so a confirmation cannot be sent.',
+      );
+    }
+
+    const message = this.documents.confirmationEmail(booking);
+    const tickets = await this.documents.ticketPdf(reference);
+
+    await this.mail.send({
+      to: booking.customer.email,
+      subject: message.subject,
+      html: message.html,
+      text: message.text,
+      attachments: [
+        {
+          filename: `${booking.reference}-tickets.pdf`,
+          content: tickets.toString('base64'),
+          contentType: 'application/pdf',
+        },
+      ],
+    });
+
+    await this.prisma.bookingNote.create({
+      data: {
+        bookingId: booking.id,
+        body: `Confirmation email re-sent to ${booking.customer.email}.`,
+      },
+    });
+
+    return { sentTo: booking.customer.email };
   }
 
   // --- tour images -----------------------------------------------------------

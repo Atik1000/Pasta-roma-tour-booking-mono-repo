@@ -1,18 +1,38 @@
 'use client';
 
+import * as React from 'react';
+
 import { Button, ErrorState, Skeleton, StatCard } from '@pasta/ui';
 import { formatMoney } from '@pasta/utils';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { CalendarCheck, CheckCircle2, Clock, Download, Euro, XCircle } from 'lucide-react';
 
-import { BookingsTable } from '@/components/bookings/bookings-table';
+import { BookingsTable, type BookingFilters } from '@/components/bookings/bookings-table';
 import { PageHeader } from '@/components/layout/admin-shell';
+import { saveBlob } from '@/lib/download';
 import { adminApi } from '@/lib/session';
 
 export default function BookingsPage() {
+  const [filters, setFilters] = React.useState<BookingFilters>({
+    search: '',
+    status: 'ALL',
+    payment: 'ALL',
+  });
+
   const stats = useQuery({
     queryKey: ['admin', 'bookings', 'stats'],
     queryFn: () => adminApi.admin.bookingStats(),
+  });
+
+  // The export mirrors whatever the table is showing, rather than always
+  // dumping every booking.
+  const exportBookings = useMutation({
+    mutationFn: () =>
+      adminApi.admin.exportBookings({
+        search: filters.search.trim() || undefined,
+        status: filters.status,
+      }),
+    onSuccess: (csv) => saveBlob(csv, 'bookings.csv'),
   });
 
   return (
@@ -20,7 +40,15 @@ export default function BookingsPage() {
       <PageHeader
         title="Bookings"
         description="Manage customer bookings, payment status, and booking records."
-        actions={<Button leadingIcon={<Download aria-hidden />}>Export Bookings</Button>}
+        actions={
+          <Button
+            leadingIcon={<Download aria-hidden />}
+            isLoading={exportBookings.isPending}
+            onClick={() => exportBookings.mutate()}
+          >
+            Export Bookings
+          </Button>
+        }
       />
 
       <section
@@ -69,7 +97,7 @@ export default function BookingsPage() {
         )}
       </section>
 
-      <BookingsTable />
+      <BookingsTable filters={filters} onFiltersChange={setFilters} />
     </>
   );
 }

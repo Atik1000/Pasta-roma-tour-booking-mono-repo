@@ -26,6 +26,7 @@ import {
   Clock,
   Mail,
   MessageSquare,
+  Download,
   Pencil,
   Plus,
   Printer,
@@ -40,6 +41,7 @@ import { isApiClientError, type AdminBookingDetail } from '@pasta/api-client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
+import { printBlob, saveBlob } from '@/lib/download';
 import { adminApi } from '@/lib/session';
 
 /**
@@ -56,11 +58,47 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
   const [showNoteField, setShowNoteField] = React.useState(false);
 
   const [items, setItems] = React.useState(booking.items);
+  const [documentNotice, setDocumentNotice] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = React.useState(false);
+
   const queryClient = useQueryClient();
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['admin', 'booking'] });
+
+  function documentFailed(caught: unknown, fallback: string) {
+    setError(isApiClientError(caught) ? caught.message : fallback);
+  }
+
+  const printInvoice = useMutation({
+    mutationFn: () => adminApi.admin.invoicePdf(booking.reference),
+    onSuccess: (pdf) => {
+      setError(null);
+      printBlob(pdf);
+    },
+    onError: (caught) => documentFailed(caught, 'Could not produce that invoice.'),
+  });
+
+  const downloadTickets = useMutation({
+    mutationFn: () => adminApi.admin.ticketsPdf(booking.reference),
+    onSuccess: (pdf) => {
+      setError(null);
+      saveBlob(pdf, `${booking.reference}-tickets.pdf`);
+    },
+    onError: (caught) => documentFailed(caught, 'Could not produce those tickets.'),
+  });
+
+  const sendConfirmation = useMutation({
+    mutationFn: () => adminApi.admin.sendConfirmation(booking.reference),
+    onSuccess: (result) => {
+      setError(null);
+      setDocumentNotice(`Confirmation sent to ${result.sentTo}.`);
+      // The resend leaves a note on the booking, so the timeline is refetched.
+      void refresh();
+      window.setTimeout(() => setDocumentNotice(null), 5000);
+    },
+    onError: (caught) => documentFailed(caught, 'Could not send that email.'),
+  });
 
   const saveCustomer = useMutation({
     mutationFn: () => adminApi.admin.updateBooking(booking.reference, { fullName, email, status }),
@@ -104,6 +142,15 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
         </p>
       ) : null}
 
+      {documentNotice ? (
+        <p
+          role="status"
+          className="border-success/30 bg-success-soft text-success-foreground rounded-card border px-4 py-3 text-sm"
+        >
+          {documentNotice}
+        </p>
+      ) : null}
+
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <Button variant="ghost" size="sm" asChild leadingIcon={<ArrowLeft aria-hidden />}>
@@ -130,9 +177,24 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
           </p>
         </div>
 
-        <Button variant="outline" leadingIcon={<Printer aria-hidden />}>
-          Print Invoice
-        </Button>
+        <div className="flex flex-wrap gap-2.5">
+          <Button
+            variant="outline"
+            leadingIcon={<Download aria-hidden />}
+            isLoading={downloadTickets.isPending}
+            onClick={() => downloadTickets.mutate()}
+          >
+            Download Tickets
+          </Button>
+          <Button
+            variant="outline"
+            leadingIcon={<Printer aria-hidden />}
+            isLoading={printInvoice.isPending}
+            onClick={() => printInvoice.mutate()}
+          >
+            Print Invoice
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-3">
@@ -529,7 +591,14 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
                 Actions
               </h2>
               <div className="flex flex-col gap-2.5">
-                <Button variant="outline" block leadingIcon={<Mail aria-hidden />}>
+                <Button
+                  variant="outline"
+                  block
+                  leadingIcon={<Mail aria-hidden />}
+                  isLoading={sendConfirmation.isPending}
+                  disabled={status === 'CANCELLED'}
+                  onClick={() => sendConfirmation.mutate()}
+                >
                   Send Booking Confirmation Email
                 </Button>
                 <Button

@@ -163,6 +163,23 @@ export class HttpClient {
     return response.data.data;
   }
 
+  /**
+   * Fetches a binary document (PDF, CSV). These endpoints answer with the file
+   * itself rather than the JSON envelope, so the response body is returned
+   * untouched. An error still arrives as JSON, so it is decoded back into the
+   * usual envelope before the interceptor sees it.
+   */
+  async download(url: string, config?: AxiosRequestConfig): Promise<Blob> {
+    const response = await this.instance.get<Blob>(url, {
+      ...config,
+      responseType: 'blob',
+      // The envelope interceptor must not try to unwrap a binary body.
+      transformResponse: (body: unknown) => body,
+    });
+
+    return response.data;
+  }
+
   /** Multipart upload used by the tour gallery and blog cover image. */
   async upload<T>(url: string, file: File, fieldName = 'file'): Promise<T> {
     const formData = new FormData();

@@ -21,6 +21,7 @@ import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { LocationsModule } from './modules/locations/locations.module';
 import { MailModule } from './modules/mail/mail.module';
 import { ToursModule } from './modules/tours/tours.module';
+import { DocumentsModule } from './modules/documents/documents.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { QueueModule } from './queues/queue.module';
 
@@ -71,6 +72,7 @@ import { QueueModule } from './queues/queue.module';
     CartModule,
     CheckoutModule,
     UploadsModule,
+    DocumentsModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
