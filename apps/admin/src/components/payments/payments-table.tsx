@@ -25,11 +25,11 @@ import {
   StatusPill,
   type ColumnDef,
 } from '@pasta/ui';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDateTime, formatMoney, humanizeEnum } from '@pasta/utils';
 import { ExternalLink, RotateCcw, Search, Undo2 } from 'lucide-react';
 
-import type { AdminPayment } from '@pasta/api-client';
+import { isApiClientError, type AdminPayment } from '@pasta/api-client';
 
 import { adminApi } from '@/lib/session';
 
@@ -39,6 +39,33 @@ export function PaymentsTable() {
   const [method, setMethod] = React.useState('ALL');
   const [page, setPage] = React.useState(1);
   const [refundTarget, setRefundTarget] = React.useState<AdminPayment | null>(null);
+  const [refundError, setRefundError] = React.useState<string | null>(null);
+  const [refundNotice, setRefundNotice] = React.useState<string | null>(null);
+
+  const queryClient = useQueryClient();
+
+  /**
+   * Refunds the balance still outstanding, not the original amount — refunding
+   * a partly refunded payment in full would ask Stripe for more than it holds.
+   */
+  const refund = useMutation({
+    mutationFn: (payment: AdminPayment) =>
+      adminApi.admin.refundPayment(payment.id, payment.amountMinor - payment.refundedMinor),
+    onSuccess: (result) => {
+      setRefundError(null);
+      setRefundTarget(null);
+      setRefundNotice(result.message);
+      // Stripe writes the local record via `charge.refunded`, so the row may
+      // take a moment to catch up.
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'payments'] });
+      window.setTimeout(() => setRefundNotice(null), 6000);
+    },
+    onError: (caught: unknown) => {
+      setRefundError(
+        isApiClientError(caught) ? caught.message : 'That refund could not be submitted.',
+      );
+    },
+  });
   const perPage = 10;
 
   const query = useQuery({
@@ -151,6 +178,15 @@ export function PaymentsTable() {
 
   return (
     <div className="flex flex-col gap-6">
+      {refundNotice ? (
+        <p
+          role="status"
+          className="border-success/30 bg-success-soft text-success-foreground rounded-card border px-4 py-3 text-sm"
+        >
+          {refundNotice}
+        </p>
+      ) : null}
+
       <Card>
         <CardContent className="grid gap-3 p-4 lg:grid-cols-[1fr_13rem_13rem_auto]">
           <div>
@@ -244,15 +280,29 @@ export function PaymentsTable() {
             <DialogTitle>Refund this payment?</DialogTitle>
             <DialogDescription>
               {refundTarget
-                ? `${formatMoney(refundTarget.amountMinor, refundTarget.currency)} will be returned to ${refundTarget.customerName} on booking ${refundTarget.bookingReference}. This cannot be undone.`
+                ? `${formatMoney(
+                    refundTarget.amountMinor - refundTarget.refundedMinor,
+                    refundTarget.currency,
+                  )} will be returned to ${refundTarget.customerName} on booking ${refundTarget.bookingReference}. This cannot be undone.`
                 : null}
             </DialogDescription>
           </DialogHeader>
+
+          {refundError ? (
+            <p role="alert" className="text-danger-foreground text-sm">
+              {refundError}
+            </p>
+          ) : null}
+
           <DialogFooter>
             <Button variant="ghost" onClick={() => setRefundTarget(null)}>
               Keep payment
             </Button>
-            <Button variant="destructive" onClick={() => setRefundTarget(null)}>
+            <Button
+              variant="destructive"
+              isLoading={refund.isPending}
+              onClick={() => refundTarget && refund.mutate(refundTarget)}
+            >
               Issue refund
             </Button>
           </DialogFooter>

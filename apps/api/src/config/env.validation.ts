@@ -36,6 +36,7 @@ export const envSchema = z.object({
   JWT_REFRESH_TTL: z.string().default('30d'),
 
   STRIPE_SECRET_KEY: optional(z.string()),
+  STRIPE_PUBLISHABLE_KEY: optional(z.string()),
   STRIPE_WEBHOOK_SECRET: optional(z.string()),
 
   SMTP_URL: optional(z.string()),

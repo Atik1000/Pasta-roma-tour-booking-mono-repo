@@ -70,6 +70,9 @@ export const stripeConfig = registerAs('stripe', () => {
   const parsed = env();
   return {
     secretKey: parsed.STRIPE_SECRET_KEY,
+    // Safe to hand to the browser — it identifies the account and can only
+    // create tokens, never move money.
+    publishableKey: parsed.STRIPE_PUBLISHABLE_KEY,
     webhookSecret: parsed.STRIPE_WEBHOOK_SECRET,
     enabled: Boolean(parsed.STRIPE_SECRET_KEY),
   };

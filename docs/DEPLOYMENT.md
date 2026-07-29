@@ -28,16 +28,16 @@ Then immediately change the seeded admin password — it is a known value.
 
 ## Required environment
 
-| Variable                                            | Notes                                                                               |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Compose fails fast if the first two are missing                                     |
-| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`           | 32+ chars each, different from one another. `openssl rand -base64 48`               |
-| `CORS_ORIGINS`                                      | Comma-separated browser origins. Anything not listed is refused                     |
-| `SITE_URL`, `ADMIN_URL`                             | Used to build links inside emails                                                   |
-| `PUBLIC_API_URL`                                    | The API URL **as the browser sees it** — inlined into both front-ends at build time |
-| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`        | Optional today; payment is not yet wired                                            |
-| `SMTP_URL`, `MAIL_FROM`                             | Without SMTP the API logs mail instead of sending it                                |
-| `SWAGGER_ENABLED`                                   | Defaults to `false` in production                                                   |
+| Variable                                                               | Notes                                                                               |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`                    | Compose fails fast if the first two are missing                                     |
+| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`                              | 32+ chars each, different from one another. `openssl rand -base64 48`               |
+| `CORS_ORIGINS`                                                         | Comma-separated browser origins. Anything not listed is refused                     |
+| `SITE_URL`, `ADMIN_URL`                                                | Used to build links inside emails                                                   |
+| `PUBLIC_API_URL`                                                       | The API URL **as the browser sees it** — inlined into both front-ends at build time |
+| `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` | Card payment. Omit them and the payment routes answer 503 — see `docs/PAYMENTS.md`  |
+| `SMTP_URL`, `MAIL_FROM`                                                | Without SMTP the API logs mail instead of sending it                                |
+| `SWAGGER_ENABLED`                                                      | Defaults to `false` in production                                                   |
 
 The API refuses to start in production without `DATABASE_URL` and both JWT secrets — see `productionEnvSchema`. That is deliberate: an instance that boots without them would fail at the first login instead of at deploy time.
 

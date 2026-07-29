@@ -116,7 +116,8 @@ export function CheckoutForm() {
       // Holder order must match cart order — that is how the API pairs names to tickets.
       const ticketHolders = cart.items.flatMap((item) => holders[item.id] ?? []);
       const result = await browserApi.checkout.create({ fullName, email, ticketHolders });
-      router.push(`/booking-confirmed?reference=${encodeURIComponent(result.reference)}`);
+      // The booking exists and holds its seats; payment is the next step.
+      router.push(`/checkout/pay?reference=${encodeURIComponent(result.reference)}`);
     } catch (caught) {
       if (isApiClientError(caught)) {
         setFormError(caught.message);

@@ -297,6 +297,32 @@ export class CheckoutResource {
   create(payload: CheckoutPayload): Promise<CheckoutResult> {
     return this.http.post<CheckoutResult>('/checkout', payload);
   }
+
+  /**
+   * Starts card payment. Returns the client secret the browser hands to
+   * Stripe; card details never touch this application's server.
+   */
+  paymentIntent(reference: string): Promise<PaymentIntentResult> {
+    return this.http.post<PaymentIntentResult>(`/checkout/${reference}/payment-intent`);
+  }
+
+  /** Polled after payment: the webhook, not the browser, confirms a booking. */
+  status(reference: string): Promise<BookingPaymentStatus> {
+    return this.http.get<BookingPaymentStatus>(`/checkout/${reference}/status`);
+  }
+}
+
+export interface PaymentIntentResult {
+  clientSecret: string;
+  publishableKey: string | null;
+  amountMinor: number;
+  currency: CurrencyCode;
+}
+
+export interface BookingPaymentStatus {
+  reference: string;
+  status: BookingStatusValue;
+  paymentStatus: PaymentStatusValue;
 }
 
 // --- admin -------------------------------------------------------------------
@@ -591,6 +617,17 @@ export class AdminResource {
 
   removeBookingItem(reference: string, itemId: string): Promise<BookingTotals> {
     return this.http.delete<BookingTotals>(`/admin/bookings/${reference}/items/${itemId}`);
+  }
+
+  /**
+   * Refunds through Stripe. Omit the amount to refund everything still
+   * refundable; the local record is written by the resulting webhook, so a
+   * refund made here and one made in the Stripe dashboard agree.
+   */
+  refundPayment(paymentId: string, amountMinor?: number): Promise<{ message: string }> {
+    return this.http.post<{ message: string }>(`/admin/payments/${paymentId}/refund`, {
+      amountMinor,
+    });
   }
 
   sendConfirmation(reference: string): Promise<{ sentTo: string }> {
