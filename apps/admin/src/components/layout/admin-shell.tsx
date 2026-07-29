@@ -17,19 +17,35 @@ import {
   SheetTrigger,
 } from '@pasta/ui';
 import { initials } from '@pasta/utils';
-import { LogOut, Menu, Moon, Sun, User } from 'lucide-react';
+import { LogOut, Menu, Moon, Sun } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 
+import { signOut, useSession } from '@/lib/session';
+
 import { SidebarNav } from './sidebar';
+
+/** ADMIN and EDITOR are the stored values; the header shows them in prose. */
+const ROLE_LABELS: Record<string, string> = {
+  ADMIN: 'Administrator',
+  EDITOR: 'Editor',
+};
 
 /**
  * The admin chrome: fixed navy sidebar on large screens, a slide-over on small
  * ones, and a top bar carrying the account menu.
  */
 export function AdminShell({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const isDark = resolvedTheme === 'dark';
+
+  // The account menu described a fictional "Admin User" regardless of who was
+  // signed in, while the session already held the real record.
+  const user = useSession((state) => state.user);
+  const displayName = user?.name ?? 'Signed in';
+  const roleLabel = user ? (ROLE_LABELS[user.role] ?? user.role) : '';
 
   return (
     <div className="flex min-h-dvh">
@@ -65,21 +81,24 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             <DropdownMenu>
               <DropdownMenuTrigger className="rounded-field hover:bg-muted focus-visible:outline-ring flex items-center gap-2.5 px-2 py-1.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2">
                 <Avatar className="size-8">
-                  <AvatarFallback>{initials('Admin User')}</AvatarFallback>
+                  <AvatarFallback>{initials(displayName)}</AvatarFallback>
                 </Avatar>
                 <span className="hidden text-left sm:block">
-                  <span className="block text-sm font-medium leading-tight">Admin User</span>
-                  <span className="text-muted-foreground block text-xs">Administrator</span>
+                  <span className="block text-sm font-medium leading-tight">{displayName}</span>
+                  <span className="text-muted-foreground block text-xs">{roleLabel}</span>
                 </span>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
-                <DropdownMenuLabel>admin@pastaromatour.com</DropdownMenuLabel>
+                <DropdownMenuLabel>{user?.email ?? 'Not signed in'}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
-                  <User aria-hidden />
-                  Profile
-                </DropdownMenuItem>
-                <DropdownMenuItem destructive>
+                <DropdownMenuItem
+                  destructive
+                  onSelect={() => {
+                    // Clears the in-memory token and revokes the refresh cookie
+                    // server-side; the redirect is what the guard reacts to.
+                    void signOut().finally(() => router.replace('/login'));
+                  }}
+                >
                   <LogOut aria-hidden />
                   Sign out
                 </DropdownMenuItem>
