@@ -20,6 +20,7 @@ import {
 import { ChevronDown, Menu, ShoppingCart, User } from 'lucide-react';
 
 import { browserApi } from '@/lib/browser-api';
+import { useCartCount } from '@/lib/cart-store';
 import { CURRENCIES } from '@/lib/placeholder-data';
 
 import { Wordmark } from './brand';
@@ -33,11 +34,14 @@ const NAV_LINKS = [
 export interface NavbarProps {
   /** Floats over the hero image on pages that have one. */
   overlay?: boolean;
-  cartCount?: number;
 }
 
-export function Navbar({ overlay = false, cartCount = 0 }: NavbarProps) {
+export function Navbar({ overlay = false }: NavbarProps) {
   const pathname = usePathname();
+  // Read from the shared store rather than a prop: the header appears on every
+  // page, and threading a count through each one is how it ended up always
+  // showing zero.
+  const cartCount = useCartCount();
   const [currency, setCurrency] = React.useState(CURRENCIES[0]?.code ?? 'EUR');
   const [locations, setLocations] = React.useState<string[]>([]);
 
@@ -152,7 +156,10 @@ export function Navbar({ overlay = false, cartCount = 0 }: NavbarProps) {
             <ShoppingCart className="size-5" aria-hidden />
             Cart
             {cartCount > 0 ? (
-              <span className="bg-danger absolute -top-2 left-3 flex size-5 items-center justify-center rounded-full text-[0.625rem] font-semibold text-white">
+              <span
+                aria-label={`${cartCount} ${cartCount === 1 ? 'ticket' : 'tickets'} in your cart`}
+                className="bg-danger absolute -top-2 left-3 flex size-5 items-center justify-center rounded-full text-[0.625rem] font-semibold text-white"
+              >
                 {cartCount}
               </span>
             ) : null}

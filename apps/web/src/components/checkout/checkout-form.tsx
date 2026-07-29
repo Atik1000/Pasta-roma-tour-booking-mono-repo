@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 
 import { browserApi } from '@/lib/browser-api';
+import { clearCartCount, syncCartCount } from '@/lib/cart-store';
 
 const PAYMENT_MARKS = ['VISA', 'MC', 'AMEX', 'PayPal', 'Pay'];
 
@@ -94,6 +95,7 @@ export function CheckoutForm() {
 
   async function removeItem(itemId: string) {
     const updated = await browserApi.cart.remove(itemId);
+    syncCartCount(updated);
     setCart(updated);
     setHolders((current) => {
       const next = { ...current };
@@ -116,6 +118,8 @@ export function CheckoutForm() {
       // Holder order must match cart order — that is how the API pairs names to tickets.
       const ticketHolders = cart.items.flatMap((item) => holders[item.id] ?? []);
       const result = await browserApi.checkout.create({ fullName, email, ticketHolders });
+      // The server empties the cart once the booking exists.
+      clearCartCount();
       // The booking exists and holds its seats; payment is the next step.
       router.push(`/checkout/pay?reference=${encodeURIComponent(result.reference)}`);
     } catch (caught) {
@@ -123,7 +127,9 @@ export function CheckoutForm() {
         setFormError(caught.message);
         setFieldErrors(caught.fieldErrors);
         // A sold-out slot invalidates the cart we are showing.
-        setCart(await browserApi.cart.get().catch(() => cart));
+        const refreshed = await browserApi.cart.get().catch(() => cart);
+        setCart(refreshed);
+        syncCartCount(refreshed);
       } else {
         setFormError('Something went wrong. Please try again.');
       }

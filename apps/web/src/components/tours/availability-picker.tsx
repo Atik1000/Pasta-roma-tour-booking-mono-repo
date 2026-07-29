@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 
 import { browserApi } from '@/lib/browser-api';
+import { syncCartCount } from '@/lib/cart-store';
 import { isApiClientError } from '@pasta/api-client';
 
 const BOOKING_FEE_MINOR = 500;
@@ -159,7 +160,7 @@ export function AvailabilityPicker({
     setError(null);
 
     try {
-      await browserApi.cart.add(slug, slotId, travellers);
+      syncCartCount(await browserApi.cart.add(slug, slotId, travellers));
       router.push(intent === 'book' ? '/checkout' : '/cart');
     } catch (caught) {
       setError(

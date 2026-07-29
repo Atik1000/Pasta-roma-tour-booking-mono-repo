@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 
 import { browserApi } from '@/lib/browser-api';
+import { syncCartCount } from '@/lib/cart-store';
 
 const ASSURANCES = [
   {
@@ -86,12 +87,16 @@ export function CartView() {
     setError(null);
 
     try {
-      setCart(await action());
+      const updated = await action();
+      setCart(updated);
+      syncCartCount(updated);
     } catch (caught) {
       setError(
         isApiClientError(caught) ? caught.message : 'Something went wrong. Please try again.',
       );
-      setCart(await browserApi.cart.get().catch(() => EMPTY_CART));
+      const loaded = await browserApi.cart.get().catch(() => EMPTY_CART);
+      setCart(loaded);
+      syncCartCount(loaded);
     } finally {
       setPendingId(null);
     }
