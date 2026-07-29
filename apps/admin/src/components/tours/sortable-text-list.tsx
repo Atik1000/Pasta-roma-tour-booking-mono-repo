@@ -46,9 +46,11 @@ export function SortableTextList({
         {items.map((item, index) => (
           <li
             key={index}
-            draggable
-            onDragStart={() => setDraggingIndex(index)}
-            onDragEnd={() => setDraggingIndex(null)}
+            // The row is a drop target but is NOT itself draggable. Marking the
+            // whole row draggable makes the browser start a drag on mousedown
+            // anywhere inside it, which swallows focus and text selection in
+            // the input — the field simply refuses to accept typing. Only the
+            // grip below carries `draggable`.
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => {
               event.preventDefault();
@@ -61,6 +63,9 @@ export function SortableTextList({
             )}
           >
             <span
+              draggable
+              onDragStart={() => setDraggingIndex(index)}
+              onDragEnd={() => setDraggingIndex(null)}
               aria-hidden
               className="text-muted-foreground cursor-grab active:cursor-grabbing"
               title="Drag to reorder"

@@ -105,6 +105,28 @@ describe('SortableTextList', () => {
     expect(screen.getByRole('button', { name: 'Move Highlights item 2 down' })).toBeDisabled();
   });
 
+  /**
+   * The one the other tests could not catch.
+   *
+   * jsdom does not implement drag-and-drop, so a `draggable` ancestor looks
+   * harmless here while a real browser refuses to focus or type into an input
+   * inside it. Asserting on the attribute itself is the only way to hold the
+   * line from a unit test.
+   */
+  it('does not put the text input inside a draggable ancestor', () => {
+    render(<Host initial={['first']} />);
+
+    for (let node: HTMLElement | null = rows()[0] as HTMLElement; node; node = node.parentElement) {
+      expect(node.getAttribute('draggable')).not.toBe('true');
+    }
+  });
+
+  it('keeps a grip that is draggable, so reordering by mouse still works', () => {
+    const { container } = render(<Host initial={['first', 'second']} />);
+
+    expect(container.querySelectorAll('[draggable="true"]')).toHaveLength(2);
+  });
+
   it('survives every row being removed', async () => {
     const user = userEvent.setup();
     render(<Host initial={['only']} />);
