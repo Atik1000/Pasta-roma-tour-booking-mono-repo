@@ -24,6 +24,11 @@ trap 'die "Deploy failed on line $LINENO. Nothing was restarted; the previous re
 
 command -v docker >/dev/null || die "Docker is not installed. See docs/SERVER-SETUP.md."
 docker compose version >/dev/null 2>&1 || die "The Docker Compose plugin is missing. See docs/SERVER-SETUP.md."
+
+# The CLI answering does not mean the daemon is up — `docker --version` prints
+# happily with dockerd stopped, and the failure then surfaces several steps
+# later as an opaque socket error mid-build.
+docker info >/dev/null 2>&1 || die "The Docker daemon is not running. Start it with: systemctl enable --now docker"
 [[ -f "$COMPOSE_FILE" ]] || die "Run this from the repository root."
 [[ -f "$ENV_FILE" ]] || die "$ENV_FILE is missing. Copy .env.production.example and fill it in."
 

@@ -38,6 +38,15 @@ fi
 
 docker compose version >/dev/null 2>&1 || die "The Docker Compose plugin is missing."
 
+# A package install can leave dockerd stopped — notably when an earlier dpkg
+# run failed partway. Starting it here costs nothing when it is already up.
+if ! docker info >/dev/null 2>&1; then
+  log "Starting the Docker daemon"
+  systemctl enable --now docker 2>/dev/null || service docker start 2>/dev/null || true
+  sleep 3
+  docker info >/dev/null 2>&1 || die "The Docker daemon will not start. Check: systemctl status docker"
+fi
+
 # --- environment ---------------------------------------------------------------
 
 if [[ -f "$ENV_FILE" ]]; then
