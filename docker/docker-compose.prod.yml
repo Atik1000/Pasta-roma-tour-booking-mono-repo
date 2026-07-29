@@ -1,0 +1,123 @@
+name: pasta-roma-tour-prod
+
+# Full production stack.
+#
+#   docker compose -f docker/docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# Every secret comes from the environment; nothing sensitive is baked into an
+# image. The `NEXT_PUBLIC_*` values are build args because Next inlines them at
+# build time — changing them requires a rebuild, not a restart.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-pasta_roma_tour}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # Not published: only the API needs to reach it.
+    expose:
+      - "5432"
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    expose:
+      - "6379"
+
+  # Applies pending migrations, then exits. The API waits for it to succeed, so
+  # a failed migration stops the deploy instead of serving against a stale schema.
+  migrate:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    command: ["node_modules/.bin/prisma", "migrate", "deploy"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pasta_roma_tour}?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      API_PREFIX: ${API_PREFIX:-api/v1}
+      CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS}
+      SITE_URL: ${SITE_URL:?set SITE_URL}
+      ADMIN_URL: ${ADMIN_URL:?set ADMIN_URL}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pasta_roma_tour}?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set JWT_REFRESH_SECRET}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-30d}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-Pasta Roma Tour <no-reply@pastaromatour.com>}
+      THROTTLE_TTL_SECONDS: ${THROTTLE_TTL_SECONDS:-60}
+      THROTTLE_LIMIT: ${THROTTLE_LIMIT:-120}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+    ports:
+      - "${API_PORT:-4000}:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:?set PUBLIC_API_URL}
+        NEXT_PUBLIC_SITE_URL: ${SITE_URL}
+        NEXT_PUBLIC_ADMIN_URL: ${ADMIN_URL}
+    restart: always
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      - api
+
+  admin:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.admin
+      args:
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL}
+        NEXT_PUBLIC_ADMIN_URL: ${ADMIN_URL}
+    restart: always
+    ports:
+      - "${ADMIN_PORT:-3001}:3001"
+    depends_on:
+      - api
+
+volumes:
+  postgres-data:
+  redis-data:

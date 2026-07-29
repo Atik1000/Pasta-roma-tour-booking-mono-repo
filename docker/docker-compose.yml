@@ -1,0 +1,59 @@
+name: pasta-roma-tour
+
+# Local development dependencies.
+#
+#   docker compose -f docker/docker-compose.yml up -d
+#
+# Application containers are added in Phase 11; this file exists so the API has
+# a database, a queue backend and a mail sink to develop against.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pasta-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pasta
+      POSTGRES_PASSWORD: pasta
+      POSTGRES_DB: pasta_roma_tour
+      # Deterministic collation so ORDER BY matches production.
+      LANG: C.UTF-8
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pasta -d pasta_roma_tour"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: pasta-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Catches outbound mail in development. SMTP on 1025, web UI on 8025.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: pasta-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    environment:
+      MP_MAX_MESSAGES: 500
+
+volumes:
+  postgres-data:
+  redis-data:

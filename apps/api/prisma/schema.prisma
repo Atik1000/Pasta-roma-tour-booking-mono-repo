@@ -1,0 +1,585 @@
+// Pasta Roma Tour — data model.
+//
+// Conventions:
+//   • UUID primary keys
+//   • money stored as integer minor units (cents), never floats
+//   • createdAt / updatedAt everywhere; deletedAt where soft delete applies
+//   • adults-only ticketing — a single adult price and a single capacity per slot
+//     (child tickets were struck from the designs; see PHASE-1-ANALYSIS.md §2)
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  ADMIN
+  EDITOR
+}
+
+enum TourStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum TourType {
+  WALKING
+  BUS
+  MUSEUM
+  DAY_TRIP
+  FOOD
+  PRIVATE
+}
+
+enum TourBulletKind {
+  HIGHLIGHT
+  INCLUDED
+  GOOD_TO_KNOW
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CARD
+  PAYPAL
+  APPLE_PAY
+}
+
+enum BlogStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum CurrencyCode {
+  EUR
+  USD
+}
+
+// ---------------------------------------------------------------------------
+// Identity — admin panel only. Travellers book as guests.
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         UserRole  @default(EDITOR)
+  avatarUrl    String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+
+  refreshTokens  RefreshToken[]
+  passwordResets PasswordReset[]
+  blogs          Blog[]
+  bookingNotes   BookingNote[]
+  activityLogs   ActivityLog[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([role])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+/// One row per issued refresh token, so sessions can be listed and revoked
+/// individually. Only the hash is stored.
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  userAgent String?
+  ipAddress String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  /// Set when this token was rotated, pointing at its replacement — reuse of a
+  /// rotated token indicates theft and invalidates the whole family.
+  replacedById String? @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model PasswordReset {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("password_resets")
+}
+
+// ---------------------------------------------------------------------------
+// Catalogue
+// ---------------------------------------------------------------------------
+
+model Location {
+  id        String  @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String  @unique
+  country   String
+  heroImage String?
+
+  tours Tour[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("locations")
+}
+
+model Tour {
+  id            String     @id @default(uuid()) @db.Uuid
+  title         String
+  slug          String     @unique
+  description   String
+  /// Duration in hours; 0.5 = 30 minutes, 24 = a full day.
+  durationHours Decimal    @db.Decimal(5, 2)
+  type          TourType
+  status        TourStatus @default(DRAFT)
+
+  locationId String   @db.Uuid
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  /// Adult price in minor units. Both currencies are entered by hand in the
+  /// admin form rather than derived from a rate.
+  priceAdultEur Int
+  priceAdultUsd Int
+
+  /// Maximum tickets a single booking may take for this tour.
+  maxTicketsPerTour Int @default(10)
+
+  isBestseller Boolean @default(false)
+  sortOrder    Int     @default(0)
+
+  meetingPointTitle   String?
+  meetingPointAddress String?
+
+  images       TourImage[]
+  bullets      TourBullet[]
+  plans        TourPlan[]
+  slots        TourSlot[]
+  cartItems    CartItem[]
+  bookingItems BookingItem[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([status, deletedAt])
+  @@index([locationId])
+  @@index([isBestseller])
+  @@map("tours")
+}
+
+model TourImage {
+  id       String  @id @default(uuid()) @db.Uuid
+  tourId   String  @db.Uuid
+  tour     Tour    @relation(fields: [tourId], references: [id], onDelete: Cascade)
+  url      String
+  alt      String?
+  position Int     @default(0)
+  isCover  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([tourId, position])
+  @@map("tour_images")
+}
+
+/// Highlights, What's Included and Good to Know share one table — the admin
+/// form renders them as three drag-sortable lists of the same shape.
+model TourBullet {
+  id       String         @id @default(uuid()) @db.Uuid
+  tourId   String         @db.Uuid
+  tour     Tour           @relation(fields: [tourId], references: [id], onDelete: Cascade)
+  kind     TourBulletKind
+  text     String
+  position Int            @default(0)
+
+  @@index([tourId, kind, position])
+  @@map("tour_bullets")
+}
+
+/// A step in the itinerary ("Tour Plan" in the admin form).
+model TourPlan {
+  id          String @id @default(uuid()) @db.Uuid
+  tourId      String @db.Uuid
+  tour        Tour   @relation(fields: [tourId], references: [id], onDelete: Cascade)
+  position    Int
+  title       String
+  description String
+
+  @@unique([tourId, position])
+  @@index([tourId])
+  @@map("tour_plans")
+}
+
+/// Bookable departure. The unique constraint enforces the rule stated in the
+/// admin UI: a time is unique per tour and date.
+model TourSlot {
+  id     String   @id @default(uuid()) @db.Uuid
+  tourId String   @db.Uuid
+  tour   Tour     @relation(fields: [tourId], references: [id], onDelete: Cascade)
+  date   DateTime @db.Date
+  /// 24-hour clock time, `HH:mm`.
+  time   String   @db.VarChar(5)
+
+  capacity Int
+  /// Seats already taken. Incremented atomically at checkout.
+  booked   Int @default(0)
+
+  cartItems    CartItem[]
+  bookingItems BookingItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tourId, date, time])
+  @@index([tourId, date])
+  @@index([date])
+  @@map("tour_slots")
+}
+
+// ---------------------------------------------------------------------------
+// Cart — guest-scoped, expires
+// ---------------------------------------------------------------------------
+
+model Cart {
+  id        String   @id @default(uuid()) @db.Uuid
+  /// Anonymous cart cookie value.
+  sessionId String   @unique
+  expiresAt DateTime
+
+  items CartItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([expiresAt])
+  @@map("carts")
+}
+
+model CartItem {
+  id     String @id @default(uuid()) @db.Uuid
+  cartId String @db.Uuid
+  cart   Cart   @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  tourId String @db.Uuid
+  tour   Tour   @relation(fields: [tourId], references: [id], onDelete: Cascade)
+  slotId String @db.Uuid
+  slot   TourSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+
+  quantity Int
+
+  /// Price captured when the item entered the cart, so a catalogue change mid-session
+  /// is detected at checkout instead of silently repricing the basket.
+  unitPriceSnapshot Int
+  currency          CurrencyCode @default(EUR)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, slotId])
+  @@index([cartId])
+  @@map("cart_items")
+}
+
+// ---------------------------------------------------------------------------
+// Bookings
+// ---------------------------------------------------------------------------
+
+/// Created on first booking and matched by email — there are no customer logins.
+model Customer {
+  id       String  @id @default(uuid()) @db.Uuid
+  email    String  @unique
+  fullName String
+  phone    String?
+
+  bookings Booking[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("customers")
+}
+
+model Booking {
+  id String @id @default(uuid()) @db.Uuid
+  /// Human-facing identifier, e.g. `BK-2024-0521`.
+  reference String @unique
+
+  customerId String   @db.Uuid
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  status        BookingStatus @default(PENDING)
+  paymentStatus PaymentStatus @default(PENDING)
+
+  currency   CurrencyCode @default(EUR)
+  subtotal   Int
+  bookingFee Int          @default(0)
+  total      Int
+
+  bookedAt    DateTime  @default(now())
+  cancelledAt DateTime?
+  /// Pending bookings past this instant release their held seats.
+  expiresAt   DateTime?
+
+  items    BookingItem[]
+  payments Payment[]
+  notes    BookingNote[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([customerId])
+  @@index([status, paymentStatus])
+  @@index([bookedAt])
+  @@index([deletedAt])
+  @@map("bookings")
+}
+
+model BookingItem {
+  id        String  @id @default(uuid()) @db.Uuid
+  bookingId String  @db.Uuid
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  tourId String @db.Uuid
+  tour   Tour   @relation(fields: [tourId], references: [id], onDelete: Restrict)
+  slotId String   @db.Uuid
+  slot   TourSlot @relation(fields: [slotId], references: [id], onDelete: Restrict)
+
+  /// Denormalised so a historic booking still reads correctly after the tour
+  /// is renamed, repriced or unpublished.
+  tourTitle String
+  date      DateTime @db.Date
+  time      String   @db.VarChar(5)
+
+  quantity  Int
+  unitPrice Int
+  amount    Int
+
+  tickets Ticket[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([bookingId])
+  @@index([tourId])
+  @@index([slotId])
+  @@map("booking_items")
+}
+
+/// One row per traveller. Holder names are collected at checkout.
+model Ticket {
+  id            String      @id @default(uuid()) @db.Uuid
+  bookingItemId String      @db.Uuid
+  bookingItem   BookingItem @relation(fields: [bookingItemId], references: [id], onDelete: Cascade)
+
+  holderFirstName String
+  holderLastName  String
+  /// Scannable code printed on the e-ticket.
+  code            String @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([bookingItemId])
+  @@map("tickets")
+}
+
+model Payment {
+  id        String  @id @default(uuid()) @db.Uuid
+  bookingId String  @db.Uuid
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  method   PaymentMethod @default(CARD)
+  status   PaymentStatus @default(PENDING)
+  amount   Int
+  currency CurrencyCode  @default(EUR)
+
+  /// Stripe PaymentIntent id; unique so webhook replays cannot double-apply.
+  providerIntentId String? @unique
+  transactionId    String?
+  failureReason    String?
+
+  paidAt     DateTime?
+  refundedAt DateTime?
+  /// Refunded amount in minor units; supports partial refunds.
+  refundedAmount Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([bookingId])
+  @@index([status])
+  @@map("payments")
+}
+
+model BookingNote {
+  id        String  @id @default(uuid()) @db.Uuid
+  bookingId String  @db.Uuid
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  authorId  String? @db.Uuid
+  author    User?   @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  body      String
+
+  createdAt DateTime @default(now())
+
+  @@index([bookingId])
+  @@map("booking_notes")
+}
+
+// ---------------------------------------------------------------------------
+// Content
+// ---------------------------------------------------------------------------
+
+model BlogCategory {
+  id   String @id @default(uuid()) @db.Uuid
+  name String @unique
+  slug String @unique
+
+  blogs BlogOnCategory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("blog_categories")
+}
+
+model Blog {
+  id      String     @id @default(uuid()) @db.Uuid
+  title   String
+  slug    String     @unique
+  content String
+  status  BlogStatus @default(DRAFT)
+
+  coverImage String?
+  /// Set server-side when the post is first published; the manual publish-date
+  /// field was struck from the design.
+  publishedAt DateTime?
+
+  metaTitle       String?
+  metaDescription String?
+  keywords        String[] @default([])
+
+  authorId String? @db.Uuid
+  author   User?   @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  categories BlogOnCategory[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([status, publishedAt])
+  @@index([deletedAt])
+  @@map("blogs")
+}
+
+model BlogOnCategory {
+  blogId     String       @db.Uuid
+  blog       Blog         @relation(fields: [blogId], references: [id], onDelete: Cascade)
+  categoryId String       @db.Uuid
+  category   BlogCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([blogId, categoryId])
+  @@index([categoryId])
+  @@map("blogs_on_categories")
+}
+
+// ---------------------------------------------------------------------------
+// Platform
+// ---------------------------------------------------------------------------
+
+model Currency {
+  code      CurrencyCode @id
+  symbol    String
+  /// Multiplier applied to a EUR amount to obtain this currency.
+  rateToEur Decimal      @db.Decimal(12, 6)
+
+  updatedAt DateTime @updatedAt
+
+  @@map("currencies")
+}
+
+model Setting {
+  key   String @id
+  value Json
+
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
+
+/// Append-only audit trail of admin actions.
+model ActivityLog {
+  id      String  @id @default(uuid()) @db.Uuid
+  actorId String? @db.Uuid
+  actor   User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  action   String
+  entity   String
+  entityId String?
+  metadata Json?
+
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
+
+model EmailLog {
+  id        String    @id @default(uuid()) @db.Uuid
+  to        String
+  subject   String
+  template  String?
+  bookingId String?   @db.Uuid
+  status    String
+  error     String?
+  sentAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([to])
+  @@index([bookingId])
+  @@map("email_logs")
+}

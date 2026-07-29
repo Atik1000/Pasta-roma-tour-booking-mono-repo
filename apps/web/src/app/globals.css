@@ -1,0 +1,4 @@
+@import '@pasta/config/tailwind/theme.css';
+
+/* Class names used by this app. */
+@source '../../src/**/*.{ts,tsx}';

@@ -1,0 +1,13 @@
+{
+  "extends": "@pasta/config/typescript/nestjs.json",
+  "compilerOptions": {
+    // Path-relative options must live in the consuming project, not in the
+    // shared preset, or TypeScript resolves them against @pasta/config.
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "prisma/**/*.ts", "prisma.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}

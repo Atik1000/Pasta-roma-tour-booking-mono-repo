@@ -1,0 +1,220 @@
+'use client';
+
+import * as React from 'react';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+
+import {
+  Button,
+  cn,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetTrigger,
+} from '@pasta/ui';
+import { ChevronDown, Menu, ShoppingCart, User } from 'lucide-react';
+
+import { browserApi } from '@/lib/browser-api';
+import { CURRENCIES } from '@/lib/placeholder-data';
+
+import { Wordmark } from './brand';
+
+const NAV_LINKS = [
+  { label: 'Search Tours', href: '/tours' },
+  { label: 'Products', href: '/products' },
+  { label: 'Blogs', href: '/blog' },
+] as const;
+
+export interface NavbarProps {
+  /** Floats over the hero image on pages that have one. */
+  overlay?: boolean;
+  cartCount?: number;
+}
+
+export function Navbar({ overlay = false, cartCount = 0 }: NavbarProps) {
+  const pathname = usePathname();
+  const [currency, setCurrency] = React.useState(CURRENCIES[0]?.code ?? 'EUR');
+  const [locations, setLocations] = React.useState<string[]>([]);
+
+  // The Locations menu reflects the catalogue, so it is read from the API.
+  React.useEffect(() => {
+    let cancelled = false;
+    void browserApi.locations
+      .list()
+      .then((rows) => {
+        if (!cancelled)
+          setLocations(rows.filter((row) => row.tourCount > 0).map((row) => row.name));
+      })
+      .catch(() => {
+        if (!cancelled) setLocations([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+
+  return (
+    <header
+      className={cn(
+        'z-40 w-full',
+        overlay
+          ? 'bg-card/85 absolute inset-x-0 top-0 border-b border-white/10 backdrop-blur-md'
+          : 'border-border bg-card/95 shadow-navbar sticky top-0 border-b backdrop-blur-md',
+      )}
+    >
+      <nav
+        aria-label="Primary"
+        className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-6 px-4 sm:px-6 lg:px-8"
+      >
+        <Link
+          href="/"
+          className="rounded-field focus-visible:outline-ring shrink-0 focus-visible:outline-2 focus-visible:outline-offset-4"
+        >
+          <Wordmark />
+          <span className="sr-only">Pasta Roma Tour — home</span>
+        </Link>
+
+        <ul className="hidden items-center gap-7 lg:flex">
+          {NAV_LINKS.slice(0, 1).map((link) => (
+            <li key={link.href}>
+              <Link
+                href={link.href}
+                className={cn(
+                  'hover:text-primary text-sm transition-colors',
+                  isActive(link.href) ? 'text-primary' : 'text-foreground',
+                )}
+              >
+                {link.label}
+              </Link>
+            </li>
+          ))}
+
+          <li>
+            <DropdownMenu>
+              <DropdownMenuTrigger className="hover:text-primary focus-visible:outline-ring flex items-center gap-1 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-4">
+                Locations
+                <ChevronDown className="size-4" aria-hidden />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {locations.map((location: string) => (
+                  <DropdownMenuItem key={location} asChild>
+                    <Link href={`/tours?location=${encodeURIComponent(location)}`}>{location}</Link>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </li>
+
+          {NAV_LINKS.slice(1).map((link) => (
+            <li key={link.href}>
+              <Link
+                href={link.href}
+                className={cn(
+                  'hover:text-primary text-sm transition-colors',
+                  isActive(link.href) ? 'text-primary' : 'text-foreground',
+                )}
+              >
+                {link.label}
+              </Link>
+            </li>
+          ))}
+
+          <li>
+            <DropdownMenu>
+              <DropdownMenuTrigger className="hover:text-primary focus-visible:outline-ring flex items-center gap-1 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-4">
+                {currency}
+                <ChevronDown className="size-4" aria-hidden />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {CURRENCIES.map((entry) => (
+                  <DropdownMenuItem key={entry.code} onSelect={() => setCurrency(entry.code)}>
+                    <span className="w-4">{entry.symbol}</span>
+                    {entry.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </li>
+        </ul>
+
+        <div className="flex items-center gap-3">
+          <Link
+            href="/cart"
+            className="hover:text-primary relative hidden items-center gap-2 text-sm transition-colors sm:inline-flex"
+          >
+            <ShoppingCart className="size-5" aria-hidden />
+            Cart
+            {cartCount > 0 ? (
+              <span className="bg-danger absolute -top-2 left-3 flex size-5 items-center justify-center rounded-full text-[0.625rem] font-semibold text-white">
+                {cartCount}
+              </span>
+            ) : null}
+          </Link>
+
+          <Button asChild size="sm" className="hidden sm:inline-flex">
+            <Link href="/login">
+              <User className="size-4" aria-hidden />
+              Login
+            </Link>
+          </Button>
+
+          {/* Mobile */}
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="subtle" size="icon" className="lg:hidden" aria-label="Open menu">
+                <Menu aria-hidden />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="flex flex-col gap-6">
+              <Wordmark />
+              <ul className="flex flex-col gap-1">
+                {[{ label: 'Search Tours', href: '/tours' }, ...NAV_LINKS.slice(1)].map((link) => (
+                  <li key={link.href}>
+                    <SheetClose asChild>
+                      <Link
+                        href={link.href}
+                        className="rounded-field hover:bg-muted block px-3 py-2.5 text-sm"
+                      >
+                        {link.label}
+                      </Link>
+                    </SheetClose>
+                  </li>
+                ))}
+                <li>
+                  <SheetClose asChild>
+                    <Link
+                      href="/cart"
+                      className="rounded-field hover:bg-muted block px-3 py-2.5 text-sm"
+                    >
+                      Cart
+                    </Link>
+                  </SheetClose>
+                </li>
+                <li>
+                  <SheetClose asChild>
+                    <Link
+                      href="/my-bookings"
+                      className="rounded-field hover:bg-muted block px-3 py-2.5 text-sm"
+                    >
+                      My Bookings
+                    </Link>
+                  </SheetClose>
+                </li>
+              </ul>
+              <Button asChild block>
+                <Link href="/login">Login</Link>
+              </Button>
+            </SheetContent>
+          </Sheet>
+        </div>
+      </nav>
+    </header>
+  );
+}

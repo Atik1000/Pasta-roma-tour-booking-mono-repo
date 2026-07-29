@@ -1,0 +1,230 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Module,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+
+import {
+  ApiEnvelopeResponse,
+  ApiPaginatedResponse,
+} from '../../common/decorators/api-response.decorator';
+import { CurrentUser, Roles } from '../../common/decorators/auth.decorators';
+import { AdminService } from './admin.service';
+import { AdminWriteService } from './admin-write.service';
+import { SaveBlogDto, SaveTourDto, UpdateBookingDto, UpsertNoteDto } from './dto/admin-write.dto';
+import {
+  AdminBlogDto,
+  AdminBookingDetailDto,
+  AdminBookingDto,
+  AdminPaymentDto,
+  AdminTourDto,
+  DashboardStatsDto,
+  ListAdminBlogsQueryDto,
+  ListAdminBookingsQueryDto,
+  ListAdminToursQueryDto,
+} from './dto/admin.dto';
+
+/**
+ * Everything the admin panel reads.
+ *
+ * The whole controller is role-gated: `JwtAuthGuard` runs globally and closes
+ * these routes by default (no `@Public()`), and `RolesGuard` then narrows them
+ * to staff.
+ */
+@ApiTags('Admin')
+@ApiBearerAuth('access-token')
+@Controller('admin')
+@Roles('ADMIN', 'EDITOR')
+export class AdminController {
+  constructor(
+    private readonly admin: AdminService,
+    private readonly write: AdminWriteService,
+  ) {}
+
+  // --- dashboard -------------------------------------------------------------
+
+  @Get('dashboard/stats')
+  @ApiOperation({ summary: 'Headline figures for the dashboard' })
+  @ApiEnvelopeResponse(DashboardStatsDto)
+  stats(): Promise<DashboardStatsDto> {
+    return this.admin.dashboardStats();
+  }
+
+  @Get('dashboard/bookings-series')
+  @ApiOperation({ summary: 'Bookings per day' })
+  series() {
+    return this.admin.bookingsSeries();
+  }
+
+  @Get('dashboard/status-breakdown')
+  @ApiOperation({ summary: 'Bookings by status' })
+  breakdown() {
+    return this.admin.statusBreakdown();
+  }
+
+  @Get('dashboard/top-tours')
+  @ApiOperation({ summary: 'Most-booked tours' })
+  topTours() {
+    return this.admin.topTours();
+  }
+
+  @Get('dashboard/recent-bookings')
+  @ApiOperation({ summary: 'Latest bookings' })
+  recent() {
+    return this.admin.recentBookings();
+  }
+
+  // --- tours -----------------------------------------------------------------
+
+  @Get('tours/stats')
+  @ApiOperation({ summary: 'Tour totals' })
+  tourStats() {
+    return this.admin.tourStats();
+  }
+
+  @Get('tours')
+  @ApiOperation({ summary: 'Every tour, including drafts' })
+  @ApiPaginatedResponse(AdminTourDto)
+  listTours(@Query() query: ListAdminToursQueryDto) {
+    return this.admin.listTours(query);
+  }
+
+  // --- bookings --------------------------------------------------------------
+
+  @Get('bookings/stats')
+  @ApiOperation({ summary: 'Booking totals' })
+  bookingStats() {
+    return this.admin.bookingStats();
+  }
+
+  @Get('bookings')
+  @ApiOperation({ summary: 'Every booking' })
+  @ApiPaginatedResponse(AdminBookingDto)
+  listBookings(@Query() query: ListAdminBookingsQueryDto) {
+    return this.admin.listBookings(query);
+  }
+
+  @Get('bookings/:reference')
+  @ApiOperation({ summary: 'A single booking with items, tickets and payment' })
+  @ApiEnvelopeResponse(AdminBookingDetailDto)
+  booking(@Param('reference') reference: string): Promise<AdminBookingDetailDto> {
+    return this.admin.bookingByReference(reference);
+  }
+
+  // --- blogs -----------------------------------------------------------------
+
+  @Get('blogs/stats')
+  @ApiOperation({ summary: 'Blog totals' })
+  blogStats() {
+    return this.admin.blogStats();
+  }
+
+  @Get('blogs')
+  @ApiOperation({ summary: 'Every blog post, including drafts' })
+  @ApiPaginatedResponse(AdminBlogDto)
+  listBlogs(@Query() query: ListAdminBlogsQueryDto) {
+    return this.admin.listBlogs(query);
+  }
+
+  // --- payments --------------------------------------------------------------
+
+  @Get('payments/stats')
+  @ApiOperation({ summary: 'Payment totals' })
+  paymentStats() {
+    return this.admin.paymentStats();
+  }
+
+  @Get('payments')
+  @ApiOperation({ summary: 'Every payment' })
+  @ApiPaginatedResponse(AdminPaymentDto)
+  listPayments(@Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.admin.listPayments(
+      Number.parseInt(page ?? '1', 10) || 1,
+      Number.parseInt(limit ?? '10', 10) || 10,
+    );
+  }
+
+  // --- writes ----------------------------------------------------------------
+
+  @Post('tours')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Create a tour' })
+  createTour(@Body() dto: SaveTourDto) {
+    return this.write.createTour(dto);
+  }
+
+  @Patch('tours/:id')
+  @ApiOperation({ summary: 'Update a tour' })
+  updateTour(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SaveTourDto) {
+    return this.write.updateTour(id, dto);
+  }
+
+  @Delete('tours/:id')
+  @ApiOperation({ summary: 'Soft-delete a tour' })
+  async deleteTour(@Param('id', ParseUUIDPipe) id: string) {
+    await this.write.deleteTour(id);
+    return { message: 'Tour deleted.' };
+  }
+
+  @Post('blogs')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Create a blog post' })
+  createBlog(@Body() dto: SaveBlogDto) {
+    return this.write.saveBlog(dto);
+  }
+
+  @Patch('blogs/:id')
+  @ApiOperation({ summary: 'Update a blog post' })
+  updateBlog(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SaveBlogDto) {
+    return this.write.saveBlog(dto, id);
+  }
+
+  @Delete('blogs/:id')
+  @ApiOperation({ summary: 'Soft-delete a blog post' })
+  async deleteBlog(@Param('id', ParseUUIDPipe) id: string) {
+    await this.write.deleteBlog(id);
+    return { message: 'Post deleted.' };
+  }
+
+  @Patch('bookings/:reference')
+  @ApiOperation({ summary: 'Update a booking and its customer' })
+  async updateBooking(@Param('reference') reference: string, @Body() dto: UpdateBookingDto) {
+    await this.write.updateBooking(reference, dto);
+    return { message: 'Booking updated.' };
+  }
+
+  @Post('bookings/:reference/cancel')
+  @ApiOperation({ summary: 'Cancel a booking and release its seats' })
+  async cancelBooking(@Param('reference') reference: string) {
+    await this.write.cancelBooking(reference);
+    return { message: 'Booking cancelled and seats released.' };
+  }
+
+  @Post('bookings/:reference/notes')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Add an internal note to a booking' })
+  async addNote(
+    @Param('reference') reference: string,
+    @Body() dto: UpsertNoteDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    await this.write.addNote(reference, dto, userId);
+    return { message: 'Note added.' };
+  }
+}
+
+@Module({
+  controllers: [AdminController],
+  providers: [AdminService, AdminWriteService],
+})
+export class AdminModule {}

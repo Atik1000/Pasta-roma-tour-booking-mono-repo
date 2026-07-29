@@ -1,0 +1,51 @@
+/**
+ * Typed SDK for the Pasta Roma Tour API.
+ *
+ * `HttpClient` owns transport (auth headers, refresh rotation, error
+ * normalisation, envelope unwrapping); `PastaApi` owns the resource surface.
+ */
+export { ApiClientError, isApiClientError } from './errors';
+export { createHttpClient, HttpClient, type HttpClientOptions } from './http';
+export {
+  AdminResource,
+  AuthResource,
+  BlogResource,
+  BookingsResource,
+  CartResource,
+  CheckoutResource,
+  LocationsResource,
+  PastaApi,
+  ToursResource,
+  type AdminBlog,
+  type AdminBooking,
+  type AdminBookingDetail,
+  type AdminBookingItem,
+  type AdminPayment,
+  type AdminTour,
+  type AuthUser,
+  type BookingStatusValue,
+  type PaymentStatusValue,
+  type SaveBlogPayload,
+  type SaveTourPayload,
+  type AvailabilityDay,
+  type Cart,
+  type CartItem,
+  type CheckoutPayload,
+  type CheckoutResult,
+  type DashboardStats,
+  type BlogCategory,
+  type BlogDetail,
+  type BlogSummary,
+  type ListPostsParams,
+  type ListToursParams,
+  type Location,
+  type LoginResponse,
+  type TourDetail,
+  type TourImage,
+  type TourPlanStep,
+  type TicketHolder,
+  type TourSlot,
+  type TourSummary,
+  type TravellerBooking,
+  type TravellerBookingTour,
+} from './resources';

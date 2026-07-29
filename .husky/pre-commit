@@ -1,0 +1,3 @@
+# Formatting only: ESLint configs are per package, so `pnpm lint` (Turborepo)
+# is the right place to run them — it also runs on every push in CI.
+pnpm exec lint-staged

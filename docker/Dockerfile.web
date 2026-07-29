@@ -1,0 +1,57 @@
+# syntax=docker/dockerfile:1
+#
+# Next.js web app. Built from the monorepo root:
+#   docker build -f docker/Dockerfile.web -t pasta-web .
+#
+# Uses Next's standalone output, so the runtime image carries only the server
+# and the traced dependencies rather than the whole workspace.
+
+FROM node:22-alpine AS base
+RUN corepack enable
+# The repo's `prepare` script installs git hooks, which have no meaning inside
+# an image and fail when devDependencies are skipped.
+ENV HUSKY=0
+WORKDIR /app
+
+FROM base AS pruner
+COPY . .
+RUN pnpm dlx turbo@2 prune @pasta/web --docker
+
+FROM base AS deps
+COPY --from=pruner /app/out/json/ .
+RUN pnpm install --frozen-lockfile
+
+FROM base AS builder
+COPY --from=deps /app/ .
+COPY --from=pruner /app/out/full/ .
+
+# NEXT_PUBLIC_* values are inlined at build time, so they are build args rather
+# than runtime env. Rebuild the image to point it at a different API.
+ARG NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1
+ARG NEXT_PUBLIC_SITE_URL=http://localhost:3000
+ARG NEXT_PUBLIC_ADMIN_URL=http://localhost:3001
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+    NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL \
+    NEXT_PUBLIC_ADMIN_URL=$NEXT_PUBLIC_ADMIN_URL \
+    NEXT_TELEMETRY_DISABLED=1
+
+RUN pnpm turbo run build --filter=@pasta/web
+
+FROM node:22-alpine AS runner
+WORKDIR /app
+
+RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
+
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
+
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
+
+USER nextjs
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["node", "apps/web/server.js"]
