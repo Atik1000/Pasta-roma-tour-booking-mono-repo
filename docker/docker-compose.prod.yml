@@ -47,6 +47,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.api
+    # The local binary, not a global install: prisma.config.ts imports
+    # `prisma/config`, which only resolves from the app's own node_modules.
     command: ["node_modules/.bin/prisma", "migrate", "deploy"]
     environment:
       NODE_ENV: production
@@ -104,6 +106,12 @@ services:
         NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:?set PUBLIC_API_URL}
         NEXT_PUBLIC_SITE_URL: ${SITE_URL}
         NEXT_PUBLIC_ADMIN_URL: ${ADMIN_URL}
+    environment:
+      # Server Components render inside this container, where the public API
+      # address resolves to the container itself. This names the API on the
+      # compose network instead; without it every server-rendered listing comes
+      # back empty while the browser works fine.
+      INTERNAL_API_URL: http://api:4000/${API_PREFIX:-api/v1}
     restart: always
     ports:
       - "${BIND_HOST:-127.0.0.1}:${WEB_PORT:-3000}:3000"

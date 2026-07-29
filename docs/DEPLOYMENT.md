@@ -21,7 +21,7 @@ Seed a brand-new environment once:
 
 ```bash
 docker compose -f docker/docker-compose.prod.yml --env-file .env.production \
-  run --rm api node_modules/.bin/prisma db seed
+  run --rm api prisma db seed
 ```
 
 Then immediately change the seeded admin password — it is a known value.
@@ -75,7 +75,7 @@ Migrations ship inside the API image, so the artefact that serves traffic is the
 ```bash
 docker compose -f docker/docker-compose.prod.yml run --rm migrate            # apply pending
 docker compose -f docker/docker-compose.prod.yml run --rm api \
-  node_modules/.bin/prisma migrate status                                    # inspect
+  prisma migrate status                                    # inspect
 ```
 
 Migrations are forward-only. To undo one, write a new migration that reverses it — never edit an applied migration, because the checksum will no longer match and `migrate deploy` will refuse to run.

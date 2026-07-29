@@ -17,6 +17,9 @@ export default defineConfig({
   },
   migrations: {
     path: 'prisma/migrations',
-    seed: 'tsx prisma/seed.ts',
+    // The local binary, not a bare `tsx`: Prisma spawns this as a child
+    // process, and inside the production image nothing puts node_modules/.bin
+    // on PATH, so a bare name fails with ENOENT.
+    seed: 'node_modules/.bin/tsx prisma/seed.ts',
   },
 });

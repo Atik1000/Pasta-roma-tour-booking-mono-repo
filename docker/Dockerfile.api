@@ -55,6 +55,9 @@ COPY --from=builder --chown=nestjs:nodejs /app/apps/api/package.json ./apps/api/
 # from the same artefact that serves traffic.
 COPY --from=builder --chown=nestjs:nodejs /app/apps/api/prisma ./apps/api/prisma
 COPY --from=builder --chown=nestjs:nodejs /app/apps/api/prisma.config.ts ./apps/api/prisma.config.ts
+# The seed imports the generated client from source, so `dist` alone is not
+# enough for `db seed` to run inside this image.
+COPY --from=builder --chown=nestjs:nodejs /app/apps/api/src/generated ./apps/api/src/generated
 
 USER nestjs
 WORKDIR /app/apps/api
