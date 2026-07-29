@@ -43,6 +43,24 @@ fi
 
 compose() { docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"; }
 
+# A port already in use fails deep inside `up`, after the build and migrations
+# have run, with a message about "programming external connectivity" that says
+# nothing about which port or what holds it. Checking first turns ten wasted
+# minutes into one clear line.
+port_from_env() { grep -E "^$1=" "$ENV_FILE" | cut -d= -f2 | tr -d '[:space:]'; }
+
+for setting in WEB_PORT:3000 ADMIN_PORT:3001 API_PORT:4000; do
+  name="${setting%%:*}"
+  port="$(port_from_env "$name")"
+  port="${port:-${setting##*:}}"
+
+  # Skip ports this stack already holds — a redeploy legitimately reuses them.
+  if ss -tln 2>/dev/null | grep -qE "[:.]${port}[[:space:]]" \
+     && ! compose ps --format '{{.Publishers}}' 2>/dev/null | grep -q ":${port}->"; then
+    die "Port ${port} (${name}) is already in use by something else. Change it in ${ENV_FILE}, or free the port. What holds it: ss -tlnp | grep :${port}"
+  fi
+done
+
 # --- pull ----------------------------------------------------------------------
 
 if [[ -d .git ]]; then
