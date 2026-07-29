@@ -27,7 +27,6 @@ import {
   Mail,
   MessageSquare,
   Download,
-  Pencil,
   Plus,
   Printer,
   Settings,
@@ -40,6 +39,7 @@ import {
 import { isApiClientError, type AdminBookingDetail } from '@pasta/api-client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
+import { AddBookingItemDialog } from '@/components/bookings/add-booking-item-dialog';
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
 import { printBlob, saveBlob } from '@/lib/download';
 import { adminApi } from '@/lib/session';
@@ -57,7 +57,15 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
   const [draftNote, setDraftNote] = React.useState('');
   const [showNoteField, setShowNoteField] = React.useState(false);
 
-  const [items, setItems] = React.useState(booking.items);
+  // Items are server records now, so the props are the source of truth and a
+  // successful edit refetches rather than patching local state.
+  const items = booking.items;
+  const [quantities, setQuantities] = React.useState<Record<string, string>>({});
+  const [busyItem, setBusyItem] = React.useState<string | null>(null);
+  const [addingTour, setAddingTour] = React.useState(false);
+  const [pendingRemoval, setPendingRemoval] = React.useState<(typeof booking.items)[number] | null>(
+    null,
+  );
   const [documentNotice, setDocumentNotice] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = React.useState(false);
@@ -69,6 +77,42 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
   function documentFailed(caught: unknown, fallback: string) {
     setError(isApiClientError(caught) ? caught.message : fallback);
   }
+
+  /**
+   * Quantity changes claim or release seats server-side, so the response is
+   * authoritative and the screen refetches instead of guessing.
+   */
+  async function changeQuantity(itemId: string, quantity: number) {
+    setBusyItem(itemId);
+    setError(null);
+
+    try {
+      await adminApi.admin.updateBookingItem(booking.reference, itemId, { quantity });
+      setQuantities((current) => {
+        const next = { ...current };
+        delete next[itemId];
+        return next;
+      });
+      await refresh();
+    } catch (caught: unknown) {
+      documentFailed(caught, 'Could not change that quantity.');
+    } finally {
+      setBusyItem(null);
+    }
+  }
+
+  const removeItem = useMutation({
+    mutationFn: (itemId: string) => adminApi.admin.removeBookingItem(booking.reference, itemId),
+    onSuccess: () => {
+      setError(null);
+      setPendingRemoval(null);
+      void refresh();
+    },
+    onError: (caught) => {
+      setPendingRemoval(null);
+      documentFailed(caught, 'Could not remove that tour.');
+    },
+  });
 
   const printInvoice = useMutation({
     mutationFn: () => adminApi.admin.invoicePdf(booking.reference),
@@ -128,7 +172,10 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
     },
   });
 
-  const subtotal = items.reduce((sum, item) => sum + item.amountMinor, 0);
+  // Money comes from the booking record, not from summing the lines: the
+  // booking fee is charged per booking and would otherwise vanish from every
+  // "Total Amount" on this screen.
+  const subtotal = booking.subtotalMinor;
   const totalTickets = items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
@@ -216,7 +263,7 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
               <div className="flex justify-between gap-4">
                 <dt className="text-muted-foreground">Total Amount</dt>
                 <dd className="font-medium tabular-nums">
-                  {formatMoney(subtotal, booking.currency)} ({booking.currency})
+                  {formatMoney(booking.totalMinor, booking.currency)} ({booking.currency})
                 </dd>
               </div>
               <div className="flex items-center justify-between gap-4">
@@ -286,7 +333,7 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
               <div className="flex justify-between gap-4">
                 <dt className="text-muted-foreground">Total Amount</dt>
                 <dd className="font-medium tabular-nums">
-                  {formatMoney(subtotal, booking.currency)} ({booking.currency})
+                  {formatMoney(booking.totalMinor, booking.currency)} ({booking.currency})
                 </dd>
               </div>
             </dl>
@@ -303,139 +350,162 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
                   <Briefcase className="text-primary size-5" aria-hidden />
                   Tours &amp; Tickets
                 </h2>
-                <Button variant="outline" size="sm" leadingIcon={<Plus aria-hidden />}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  leadingIcon={<Plus aria-hidden />}
+                  disabled={status === 'CANCELLED'}
+                  onClick={() => setAddingTour(true)}
+                >
                   Add Tour
                 </Button>
               </div>
 
+              {items.length === 0 ? (
+                <p className="text-muted-foreground rounded-field border-border border border-dashed p-6 text-center text-sm">
+                  This booking has no tours. Add one to give it a value.
+                </p>
+              ) : null}
+
               <div className="flex flex-col gap-5">
-                {items.map((item, itemIndex) => (
-                  <div key={item.id} className="rounded-card border-border border">
-                    <div className="flex flex-wrap items-start gap-4 p-4">
-                      <span
-                        role="img"
-                        aria-label={item.title}
-                        className="rounded-field h-14 w-20 shrink-0 bg-[linear-gradient(140deg,#f3ddb8,#e3b76f_55%,#b5751f)]"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-medium">{item.title}</h3>
-                        <ul className="text-muted-foreground mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                          <li className="inline-flex items-center gap-1.5">
-                            <CalendarDays className="size-4" aria-hidden />
-                            {formatDate(item.date)}
-                          </li>
-                          <li className="inline-flex items-center gap-1.5">
-                            <Clock className="size-4" aria-hidden />
-                            {formatClockTime(item.time)}
-                          </li>
-                        </ul>
+                {items.map((item) => {
+                  const draft = quantities[item.id];
+                  const pendingQuantity = draft === undefined ? item.quantity : Number(draft) || 0;
+                  const changed = pendingQuantity !== item.quantity && pendingQuantity >= 1;
+                  const busy = busyItem === item.id;
+
+                  return (
+                    <div key={item.id} className="rounded-card border-border border">
+                      <div className="flex flex-wrap items-start gap-4 p-4">
+                        <span
+                          role="img"
+                          aria-label={item.title}
+                          className="rounded-field h-14 w-20 shrink-0 bg-[linear-gradient(140deg,#f3ddb8,#e3b76f_55%,#b5751f)]"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-medium">{item.title}</h3>
+                          <ul className="text-muted-foreground mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                            <li className="inline-flex items-center gap-1.5">
+                              <CalendarDays className="size-4" aria-hidden />
+                              {formatDate(item.date)}
+                            </li>
+                            <li className="inline-flex items-center gap-1.5">
+                              <Clock className="size-4" aria-hidden />
+                              {formatClockTime(item.time)}
+                            </li>
+                          </ul>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            variant="subtle"
+                            size="icon"
+                            aria-label={`Remove ${item.title}`}
+                            className="text-danger hover:bg-danger-soft"
+                            disabled={busy || status === 'CANCELLED'}
+                            onClick={() => setPendingRemoval(item)}
+                          >
+                            <Trash2 aria-hidden />
+                          </Button>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5">
-                        <Button variant="subtle" size="icon" aria-label={`Edit ${item.title}`}>
-                          <Pencil aria-hidden />
-                        </Button>
+                      <div className="border-border overflow-x-auto border-t">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-border bg-muted/40 text-muted-foreground border-b text-left text-xs uppercase tracking-wide">
+                              <th scope="col" className="px-4 py-2.5 font-medium">
+                                Ticket Type
+                              </th>
+                              <th scope="col" className="px-4 py-2.5 font-medium">
+                                Unit Price
+                              </th>
+                              <th scope="col" className="px-4 py-2.5 font-medium">
+                                Quantity
+                              </th>
+                              <th scope="col" className="px-4 py-2.5 font-medium">
+                                Ticket Holders
+                              </th>
+                              <th scope="col" className="px-4 py-2.5 text-right font-medium">
+                                Line Total
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              <td className="px-4 py-3">
+                                {/* Adults only — child tickets were removed from the product. */}
+                                Adult ({booking.currency})
+                              </td>
+                              <td className="px-4 py-3 tabular-nums">
+                                {/* The price agreed at booking time, not today's. */}
+                                {formatMoney(item.unitPriceMinor, booking.currency)}
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-1.5">
+                                  <Input
+                                    className="h-9 w-20"
+                                    type="number"
+                                    min="1"
+                                    aria-label={`Quantity for ${item.title}`}
+                                    value={draft ?? String(item.quantity)}
+                                    disabled={busy || status === 'CANCELLED'}
+                                    onChange={(event) =>
+                                      setQuantities((current) => ({
+                                        ...current,
+                                        [item.id]: event.target.value,
+                                      }))
+                                    }
+                                  />
+                                  {changed ? (
+                                    <Button
+                                      size="sm"
+                                      isLoading={busy}
+                                      onClick={() => void changeQuantity(item.id, pendingQuantity)}
+                                    >
+                                      Save
+                                    </Button>
+                                  ) : null}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <ul className="flex flex-col gap-1">
+                                  {item.holders.map((holder, index) => (
+                                    <li
+                                      key={`${item.id}-${index}`}
+                                      className="flex items-center gap-2"
+                                    >
+                                      <span
+                                        className="bg-primary size-1.5 rounded-full"
+                                        aria-hidden
+                                      />
+                                      {holder}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </td>
+                              <td className="px-4 py-3 text-right tabular-nums">
+                                {formatMoney(item.amountMinor, booking.currency)}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="border-border flex justify-end border-t p-3">
                         <Button
-                          variant="subtle"
-                          size="icon"
-                          aria-label={`Remove ${item.title}`}
-                          className="text-danger hover:bg-danger-soft"
-                          onClick={() => setItems(items.filter((_, i) => i !== itemIndex))}
+                          variant="outline"
+                          size="sm"
+                          leadingIcon={<Plus aria-hidden />}
+                          disabled={busy || status === 'CANCELLED'}
+                          onClick={() => void changeQuantity(item.id, item.quantity + 1)}
                         >
-                          <Trash2 aria-hidden />
+                          Add Ticket
                         </Button>
                       </div>
                     </div>
-
-                    <div className="border-border overflow-x-auto border-t">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-border bg-muted/40 text-muted-foreground border-b text-left text-xs uppercase tracking-wide">
-                            <th scope="col" className="px-4 py-2.5 font-medium">
-                              #
-                            </th>
-                            <th scope="col" className="px-4 py-2.5 font-medium">
-                              Ticket Type
-                            </th>
-                            <th scope="col" className="px-4 py-2.5 font-medium">
-                              Unit Price
-                            </th>
-                            <th scope="col" className="px-4 py-2.5 font-medium">
-                              Quantity
-                            </th>
-                            <th scope="col" className="px-4 py-2.5 font-medium">
-                              Ticket Holders
-                            </th>
-                            <th scope="col" className="px-4 py-2.5 text-right font-medium">
-                              Actions
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td className="px-4 py-3">1</td>
-                            <td className="px-4 py-3">
-                              {/* Adults only — child tickets were removed from the product. */}
-                              <Select defaultValue="ADULT">
-                                <SelectTrigger className="h-9 w-36" aria-label="Ticket type">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="ADULT">Adult ({booking.currency})</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </td>
-                            <td className="px-4 py-3">
-                              <Input
-                                className="h-9 w-28"
-                                aria-label="Unit price"
-                                defaultValue={(item.unitPriceMinor / 100).toFixed(2)}
-                              />
-                            </td>
-                            <td className="px-4 py-3">
-                              <Input
-                                className="h-9 w-20"
-                                type="number"
-                                min="1"
-                                aria-label="Quantity"
-                                defaultValue={item.quantity}
-                              />
-                            </td>
-                            <td className="px-4 py-3">
-                              <ul className="flex flex-col gap-1">
-                                {item.holders.map((holder) => (
-                                  <li key={holder} className="flex items-center gap-2">
-                                    <span
-                                      className="bg-primary size-1.5 rounded-full"
-                                      aria-hidden
-                                    />
-                                    {holder}
-                                  </li>
-                                ))}
-                              </ul>
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="text-danger hover:bg-danger-soft size-8"
-                                aria-label={`Delete ticket row for ${item.title}`}
-                              >
-                                <Trash2 aria-hidden />
-                              </Button>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <div className="border-border flex justify-end border-t p-3">
-                      <Button variant="outline" size="sm" leadingIcon={<Plus aria-hidden />}>
-                        Add Ticket
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
@@ -458,12 +528,31 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
                   <dt>Subtotal</dt>
                   <dd className="tabular-nums">{formatMoney(subtotal, booking.currency)}</dd>
                 </div>
+                {booking.bookingFeeMinor > 0 ? (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Booking fee</dt>
+                    <dd className="tabular-nums">
+                      {formatMoney(booking.bookingFeeMinor, booking.currency)}
+                    </dd>
+                  </div>
+                ) : null}
                 <div className="flex justify-between gap-4">
                   <dt className="font-medium">Total Amount</dt>
                   <dd className="text-success font-semibold tabular-nums">
-                    {formatMoney(subtotal, booking.currency)} ({booking.currency})
+                    {formatMoney(booking.totalMinor, booking.currency)} ({booking.currency})
                   </dd>
                 </div>
+                {booking.payment && booking.payment.amountMinor !== booking.totalMinor ? (
+                  <p className="border-warning/30 bg-warning-soft text-warning-foreground rounded-field mt-2 border px-3 py-2 text-xs">
+                    {formatMoney(booking.payment.amountMinor, booking.currency)} was captured. This
+                    booking has been edited since, so the amounts differ by{' '}
+                    {formatMoney(
+                      Math.abs(booking.totalMinor - booking.payment.amountMinor),
+                      booking.currency,
+                    )}
+                    .
+                  </p>
+                ) : null}
               </dl>
             </CardContent>
           </Card>
@@ -616,6 +705,28 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
           </Card>
         </div>
       </div>
+
+      <AddBookingItemDialog
+        open={addingTour}
+        onOpenChange={setAddingTour}
+        reference={booking.reference}
+        currency={booking.currency}
+        onAdded={() => void refresh()}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingRemoval)}
+        onOpenChange={(open) => !open && setPendingRemoval(null)}
+        title="Remove this tour from the booking?"
+        description={
+          pendingRemoval
+            ? `${pendingRemoval.title} and its ${pendingRemoval.quantity} ticket(s) will be removed, and the seats released back to the departure.`
+            : ''
+        }
+        confirmLabel="Remove tour"
+        isPending={removeItem.isPending}
+        onConfirm={() => pendingRemoval && removeItem.mutate(pendingRemoval.id)}
+      />
 
       <ConfirmDialog
         open={confirmCancel}

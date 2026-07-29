@@ -10,6 +10,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   Max,
   MaxLength,
@@ -251,4 +252,59 @@ export class SaveTourImagesDto {
   @ArrayMaxSize(30)
   @IsString({ each: true })
   urls!: string[];
+}
+
+export class TicketHolderInputDto {
+  @ApiProperty()
+  @IsString()
+  @MinLength(1, { message: 'Enter a first name.' })
+  @MaxLength(80)
+  firstName!: string;
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(1, { message: 'Enter a last name.' })
+  @MaxLength(80)
+  lastName!: string;
+}
+
+export class AddBookingItemDto {
+  @ApiProperty({ description: 'The departure to add. The tour is derived from it.' })
+  @IsUUID('4')
+  slotId!: string;
+
+  @ApiProperty({ example: 2 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1, { message: 'Add at least one ticket.' })
+  @Max(200)
+  quantity!: number;
+
+  @ApiPropertyOptional({
+    type: [TicketHolderInputDto],
+    description: 'Names for the new tickets. Unnamed tickets get a placeholder.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => TicketHolderInputDto)
+  holders?: TicketHolderInputDto[];
+}
+
+export class UpdateBookingItemDto {
+  @ApiProperty({ example: 3 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1, { message: 'A tour on a booking needs at least one ticket. Remove it instead.' })
+  @Max(200)
+  quantity!: number;
+
+  @ApiPropertyOptional({ type: [TicketHolderInputDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => TicketHolderInputDto)
+  holders?: TicketHolderInputDto[];
 }

@@ -570,6 +570,29 @@ export class AdminResource {
     return this.http.download('/admin/bookings/export', { params });
   }
 
+  /** Adds a departure to an existing booking, claiming its seats. */
+  addBookingItem(
+    reference: string,
+    payload: { slotId: string; quantity: number; holders?: TicketHolderInput[] },
+  ): Promise<BookingTotals & { id: string }> {
+    return this.http.post<BookingTotals & { id: string }>(
+      `/admin/bookings/${reference}/items`,
+      payload,
+    );
+  }
+
+  updateBookingItem(
+    reference: string,
+    itemId: string,
+    payload: { quantity: number; holders?: TicketHolderInput[] },
+  ): Promise<BookingTotals> {
+    return this.http.patch<BookingTotals>(`/admin/bookings/${reference}/items/${itemId}`, payload);
+  }
+
+  removeBookingItem(reference: string, itemId: string): Promise<BookingTotals> {
+    return this.http.delete<BookingTotals>(`/admin/bookings/${reference}/items/${itemId}`);
+  }
+
   sendConfirmation(reference: string): Promise<{ sentTo: string }> {
     return this.http.post<{ sentTo: string }>(`/admin/bookings/${reference}/send-confirmation`);
   }
@@ -632,6 +655,18 @@ export interface AdminBlogDetail {
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TicketHolderInput {
+  firstName: string;
+  lastName: string;
+}
+
+/** What a booking owes after an edit, recomputed from its items. */
+export interface BookingTotals {
+  subtotal: number;
+  bookingFee: number;
+  total: number;
 }
 
 export interface AdminLocation {

@@ -28,13 +28,16 @@ import { DocumentsService } from '../documents/documents.service';
 
 import { AdminService } from './admin.service';
 import { AdminWriteService } from './admin-write.service';
+import { BookingItemsService } from './booking-items.service';
 import {
+  AddBookingItemDto,
   SaveBlogDto,
   SaveLocationDto,
   SaveSlotDto,
   SaveTourDto,
   SaveTourImagesDto,
   UpdateBookingDto,
+  UpdateBookingItemDto,
   UpsertNoteDto,
 } from './dto/admin-write.dto';
 import {
@@ -65,6 +68,7 @@ export class AdminController {
     private readonly admin: AdminService,
     private readonly write: AdminWriteService,
     private readonly documents: DocumentsService,
+    private readonly items: BookingItemsService,
   ) {}
 
   // --- dashboard -------------------------------------------------------------
@@ -317,6 +321,38 @@ export class AdminController {
     return { message: 'Booking cancelled and seats released.' };
   }
 
+  @Post('bookings/:reference/items')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Add a tour to an existing booking' })
+  addBookingItem(
+    @Param('reference') reference: string,
+    @Body() dto: AddBookingItemDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.items.addItem(reference, dto, userId);
+  }
+
+  @Patch('bookings/:reference/items/:itemId')
+  @ApiOperation({ summary: 'Change a tour on a booking' })
+  updateBookingItem(
+    @Param('reference') reference: string,
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+    @Body() dto: UpdateBookingItemDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.items.updateItem(reference, itemId, dto, userId);
+  }
+
+  @Delete('bookings/:reference/items/:itemId')
+  @ApiOperation({ summary: 'Remove a tour from a booking and release its seats' })
+  removeBookingItem(
+    @Param('reference') reference: string,
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.items.removeItem(reference, itemId, userId);
+  }
+
   @Post('bookings/:reference/send-confirmation')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Re-send the confirmation email with e-tickets attached' })
@@ -340,6 +376,6 @@ export class AdminController {
 @Module({
   imports: [DocumentsModule],
   controllers: [AdminController],
-  providers: [AdminService, AdminWriteService],
+  providers: [AdminService, AdminWriteService, BookingItemsService],
 })
 export class AdminModule {}

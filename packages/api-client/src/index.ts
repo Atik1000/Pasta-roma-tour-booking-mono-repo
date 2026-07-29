@@ -27,6 +27,8 @@ export {
   type PaymentStatusValue,
   type SaveBlogPayload,
   type AdminBlogDetail,
+  type BookingTotals,
+  type TicketHolderInput,
   type AdminLocation,
   type AdminSlot,
   type AdminTourDetail,
