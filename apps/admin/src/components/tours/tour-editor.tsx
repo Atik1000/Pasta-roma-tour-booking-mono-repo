@@ -21,22 +21,19 @@ import {
   Textarea,
 } from '@pasta/ui';
 import { isApiClientError, type SaveTourPayload } from '@pasta/api-client';
-import { formatClockTime, formatDate } from '@pasta/utils';
+import { formatDate } from '@pasta/utils';
 import { useMutation } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft, Info, Pencil, Plus, Trash2, Upload, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Plus, Trash2 } from 'lucide-react';
 
 import { adminApi } from '@/lib/session';
 
 import { SortableTextList } from './sortable-text-list';
+import { TourGalleryPanel } from './tour-gallery-panel';
+import { TourSlotsPanel } from './tour-slots-panel';
 
 export interface TourPlanRow {
   title: string;
   description: string;
-}
-
-export interface TimeSlotRow {
-  time: string;
-  capacity: number;
 }
 
 export interface TourEditorValue {
@@ -54,7 +51,6 @@ export interface TourEditorValue {
   goodToKnow: string[];
   gallery: string[];
   plans: TourPlanRow[];
-  slots: Record<string, TimeSlotRow[]>;
   meetingPointTitle: string;
   meetingPointAddress: string;
   published: boolean;
@@ -105,9 +101,16 @@ export function TourEditor({
   const save = useMutation({
     mutationFn: (payload: SaveTourPayload) =>
       value.id ? adminApi.admin.updateTour(value.id, payload) : adminApi.admin.createTour(payload),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       setError(null);
-      if (!value.id) router.replace(`/tours/${result.id}`);
+      if (value.id) return;
+
+      // The gallery could not be attached before the tour existed.
+      if (value.gallery.length) {
+        await adminApi.admin.setTourImages(result.id, value.gallery);
+      }
+      patch({ id: result.id });
+      router.replace(`/tours/${result.id}`);
     },
     onError: (caught: unknown) => {
       setError(isApiClientError(caught) ? caught.message : 'Could not save. Please try again.');
@@ -134,10 +137,6 @@ export function TourEditor({
       published: value.published,
     };
   }
-  const [slotDate, setSlotDate] = React.useState(
-    Object.keys(initialValue.slots)[0] ?? '2024-05-25',
-  );
-
   function patch(changes: Partial<TourEditorValue>) {
     setValue((current) => ({ ...current, ...changes }));
   }
@@ -147,12 +146,6 @@ export function TourEditor({
     save.mutate(toPayload(), {
       onSettled: () => window.setTimeout(() => setSavedRegion(null), 2000),
     });
-  }
-
-  const slotsForDate = value.slots[slotDate] ?? [];
-
-  function updateSlots(next: TimeSlotRow[]) {
-    patch({ slots: { ...value.slots, [slotDate]: next } });
   }
 
   const SaveButton = ({ region }: { region: string }) => (
@@ -305,172 +298,13 @@ export function TourEditor({
             ))}
           </div>
 
-          <Card>
-            <CardContent className="p-6">
-              <h2 className="mb-4 text-lg font-semibold">Tour Gallery</h2>
+          <TourGalleryPanel
+            tourId={value.id}
+            gallery={value.gallery}
+            onChange={(gallery) => patch({ gallery })}
+          />
 
-              <ul className="flex flex-wrap gap-3">
-                {value.gallery.map((_image, index) => (
-                  <li key={index} className="relative">
-                    <span
-                      role="img"
-                      aria-label={`Gallery image ${index + 1}`}
-                      className="rounded-field block h-24 w-36 bg-[linear-gradient(140deg,#f3ddb8,#e3b76f_55%,#b5751f)]"
-                    />
-                    <button
-                      type="button"
-                      aria-label={`Remove gallery image ${index + 1}`}
-                      onClick={() =>
-                        patch({
-                          gallery: value.gallery.filter((_, position) => position !== index),
-                        })
-                      }
-                      className="bg-cream-900/70 hover:bg-danger focus-visible:outline-ring absolute right-1.5 top-1.5 flex size-6 items-center justify-center rounded-full text-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
-                    >
-                      <X className="size-3.5" aria-hidden />
-                    </button>
-                  </li>
-                ))}
-
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => patch({ gallery: [...value.gallery, `image-${Date.now()}`] })}
-                    className="rounded-field border-border text-muted-foreground hover:border-primary hover:text-primary focus-visible:outline-ring flex h-24 w-36 flex-col items-center justify-center gap-1.5 border border-dashed text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
-                  >
-                    <Upload className="size-5" aria-hidden />
-                    Add Photos
-                  </button>
-                </li>
-              </ul>
-
-              <p className="text-muted-foreground mt-3 text-xs">
-                You can upload multiple images. Recommended size: 1920x1080px. Max 10MB per image.
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold">Tour Ticket Availability (Time Slots)</h2>
-                <Button
-                  type="button"
-                  size="sm"
-                  leadingIcon={<Plus aria-hidden />}
-                  onClick={() => updateSlots([...slotsForDate, { time: '09:00', capacity: 20 }])}
-                >
-                  Add Time Slot
-                </Button>
-              </div>
-
-              <div className="mb-4 flex items-center gap-3">
-                <label htmlFor="slot-date" className="text-sm font-medium">
-                  Date
-                </label>
-                <Input
-                  id="slot-date"
-                  type="date"
-                  value={slotDate}
-                  onChange={(event) => setSlotDate(event.target.value)}
-                  className="h-10 w-48"
-                />
-              </div>
-
-              <div className="rounded-field border-border overflow-x-auto border">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-border bg-muted/40 text-muted-foreground border-b text-left text-xs uppercase tracking-wide">
-                      <th scope="col" className="px-4 py-2.5 font-medium">
-                        Time
-                      </th>
-                      <th scope="col" className="px-4 py-2.5 font-medium">
-                        Adult Tickets Available
-                      </th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-medium">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {slotsForDate.length === 0 ? (
-                      <tr>
-                        <td colSpan={3} className="text-muted-foreground px-4 py-6 text-center">
-                          No time slots for {formatDate(slotDate)} yet.
-                        </td>
-                      </tr>
-                    ) : (
-                      slotsForDate.map((slot, index) => (
-                        <tr key={index} className="border-border border-b last:border-0">
-                          <td className="px-4 py-2.5">
-                            <Input
-                              type="time"
-                              value={slot.time}
-                              aria-label={`Time for slot ${index + 1}`}
-                              onChange={(event) => {
-                                const next = [...slotsForDate];
-                                next[index] = { ...slot, time: event.target.value };
-                                updateSlots(next);
-                              }}
-                              className="h-9 w-32"
-                            />
-                          </td>
-                          <td className="px-4 py-2.5">
-                            <Input
-                              type="number"
-                              min="0"
-                              value={slot.capacity}
-                              aria-label={`Tickets available for ${formatClockTime(slot.time)}`}
-                              onChange={(event) => {
-                                const next = [...slotsForDate];
-                                next[index] = { ...slot, capacity: Number(event.target.value) };
-                                updateSlots(next);
-                              }}
-                              className="h-9 w-28"
-                            />
-                          </td>
-                          <td className="px-4 py-2.5">
-                            <div className="flex justify-end gap-1.5">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="size-8"
-                                aria-label={`Edit slot ${index + 1}`}
-                              >
-                                <Pencil aria-hidden />
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="text-danger hover:bg-danger-soft size-8"
-                                aria-label={`Delete slot ${index + 1}`}
-                                onClick={() =>
-                                  updateSlots(slotsForDate.filter((_, i) => i !== index))
-                                }
-                              >
-                                <Trash2 aria-hidden />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              <p className="rounded-field bg-info-soft text-info-foreground mt-4 flex gap-2.5 p-3 text-sm">
-                <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
-                <span>
-                  <strong className="block">Availability Rules</strong>
-                  Time is unique for each tour + date. You cannot add duplicate time slots for the
-                  same date.
-                </span>
-              </p>
-            </CardContent>
-          </Card>
+          <TourSlotsPanel tourId={value.id} />
         </div>
 
         {/* ---------------- right column ---------------- */}

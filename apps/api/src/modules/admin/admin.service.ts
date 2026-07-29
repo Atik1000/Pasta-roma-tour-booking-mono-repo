@@ -3,7 +3,7 @@ import type { PaginationMeta } from '@pasta/types';
 import { buildPaginationMeta, normalizePagination } from '@pasta/utils';
 
 import { PrismaService } from '../../database/prisma.service';
-import type { Prisma } from '../../generated/prisma/client';
+import type { Prisma, TourBulletKind } from '../../generated/prisma/client';
 import type {
   AdminBlogDto,
   AdminBookingDetailDto,
@@ -181,6 +181,114 @@ export class AdminService {
       })),
       meta: buildPaginationMeta(total, page, limit),
     };
+  }
+
+  /**
+   * Everything the tour editor needs in one round trip. The public detail
+   * endpoint is keyed by slug and hides drafts, so the admin needs its own.
+   */
+  async tourDetail(id: string) {
+    const tour = await this.prisma.tour.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        location: { select: { name: true } },
+        images: { orderBy: { position: 'asc' }, select: { url: true } },
+        bullets: { orderBy: { position: 'asc' }, select: { kind: true, text: true } },
+        plans: { orderBy: { position: 'asc' }, select: { title: true, description: true } },
+      },
+    });
+
+    if (!tour) throw new NotFoundException('That tour could not be found.');
+
+    const bulletsOfKind = (kind: TourBulletKind) =>
+      tour.bullets.filter((bullet) => bullet.kind === kind).map((bullet) => bullet.text);
+
+    return {
+      id: tour.id,
+      slug: tour.slug,
+      title: tour.title,
+      description: tour.description,
+      durationHours: Number(tour.durationHours),
+      type: tour.type,
+      location: tour.location.name,
+      priceUsdMinor: tour.priceAdultUsd,
+      priceEurMinor: tour.priceAdultEur,
+      maxTicketsPerTour: tour.maxTicketsPerTour,
+      highlights: bulletsOfKind('HIGHLIGHT'),
+      included: bulletsOfKind('INCLUDED'),
+      goodToKnow: bulletsOfKind('GOOD_TO_KNOW'),
+      gallery: tour.images.map((image) => image.url),
+      plans: tour.plans,
+      meetingPointTitle: tour.meetingPointTitle,
+      meetingPointAddress: tour.meetingPointAddress,
+      published: tour.status === 'PUBLISHED',
+      createdAt: tour.createdAt.toISOString(),
+      updatedAt: tour.updatedAt.toISOString(),
+    };
+  }
+
+  /** One post in the shape the blog editor edits. */
+  async blogDetail(id: string) {
+    const blog = await this.prisma.blog.findFirst({
+      where: { id, deletedAt: null },
+      include: { categories: { include: { category: { select: { name: true } } } } },
+    });
+
+    if (!blog) throw new NotFoundException('That post could not be found.');
+
+    return {
+      id: blog.id,
+      title: blog.title,
+      slug: blog.slug,
+      content: blog.content,
+      status: blog.status,
+      coverImage: blog.coverImage,
+      categories: blog.categories.map((link) => link.category.name),
+      metaTitle: blog.metaTitle,
+      metaDescription: blog.metaDescription,
+      keywords: blog.keywords,
+      publishedAt: blog.publishedAt?.toISOString() ?? null,
+      createdAt: blog.createdAt.toISOString(),
+      updatedAt: blog.updatedAt.toISOString(),
+    };
+  }
+
+  /** Every category the blog editor can offer. */
+  async blogCategories() {
+    return this.prisma.blogCategory.findMany({
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
+    });
+  }
+
+  /** Destinations for the editor's Location select. */
+  async locations() {
+    const rows = await this.prisma.location.findMany({
+      where: { deletedAt: null },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, country: true },
+    });
+
+    return rows;
+  }
+
+  /** Departures for one tour, optionally narrowed to a single date. */
+  async tourSlots(tourId: string, date?: string) {
+    const rows = await this.prisma.tourSlot.findMany({
+      where: {
+        tourId,
+        ...(date ? { date: new Date(`${date}T00:00:00.000Z`) } : {}),
+      },
+      orderBy: [{ date: 'asc' }, { time: 'asc' }],
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      date: row.date.toISOString().slice(0, 10),
+      time: row.time,
+      capacity: row.capacity,
+      booked: row.booked,
+    }));
   }
 
   // --- bookings --------------------------------------------------------------

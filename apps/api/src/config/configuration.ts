@@ -28,6 +28,7 @@ export const appConfig = registerAs('app', () => {
       .filter(Boolean),
     siteUrl: parsed.SITE_URL,
     adminUrl: parsed.ADMIN_URL,
+    apiPublicUrl: parsed.API_PUBLIC_URL,
     swaggerEnabled: parsed.SWAGGER_ENABLED,
   };
 });

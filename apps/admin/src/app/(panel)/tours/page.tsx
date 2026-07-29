@@ -1,5 +1,7 @@
 'use client';
 
+import * as React from 'react';
+
 import Link from 'next/link';
 
 import { Button, ErrorState, Skeleton, StatCard } from '@pasta/ui';
@@ -7,17 +9,20 @@ import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, FileText, Landmark, MapPin, Plus } from 'lucide-react';
 
 import { PageHeader } from '@/components/layout/admin-shell';
+import { AddLocationDialog } from '@/components/tours/add-location-dialog';
 import { ToursTable } from '@/components/tours/tours-table';
 import { adminApi } from '@/lib/session';
 
 export default function ToursPage() {
+  const [addingLocation, setAddingLocation] = React.useState(false);
+
   const stats = useQuery({
     queryKey: ['admin', 'tours', 'stats'],
     queryFn: () => adminApi.admin.tourStats(),
   });
   const locations = useQuery({
     queryKey: ['locations'],
-    queryFn: () => adminApi.locations.list(),
+    queryFn: () => adminApi.admin.locations(),
   });
 
   return (
@@ -27,7 +32,11 @@ export default function ToursPage() {
         description="Manage all tours, view details, and keep your offerings up to date."
         actions={
           <>
-            <Button variant="outline" leadingIcon={<Plus aria-hidden />}>
+            <Button
+              variant="outline"
+              leadingIcon={<Plus aria-hidden />}
+              onClick={() => setAddingLocation(true)}
+            >
               Add New Location
             </Button>
             <Button asChild leadingIcon={<Plus aria-hidden />}>
@@ -75,6 +84,8 @@ export default function ToursPage() {
       </section>
 
       <ToursTable locations={(locations.data ?? []).map((entry) => entry.name)} />
+
+      <AddLocationDialog open={addingLocation} onOpenChange={setAddingLocation} />
     </>
   );
 }

@@ -9,9 +9,12 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { Logger as PinoLogger } from 'nestjs-pino';
 
+import { join } from 'node:path';
+
 import { AppModule } from './app.module';
 import { buildValidationPipe } from './common/pipes/validation.pipe';
 import { appConfig } from './config/configuration';
+import { UPLOAD_DIR, UPLOAD_ROUTE } from './modules/uploads/uploads.module';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -36,6 +39,15 @@ async function bootstrap(): Promise<void> {
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     exposedHeaders: ['x-request-id'],
+  });
+
+  // Uploaded images. Served with a long cache because filenames are random and
+  // therefore immutable; `index: false` stops the directory being listable.
+  app.useStaticAssets(join(process.cwd(), UPLOAD_DIR), {
+    prefix: UPLOAD_ROUTE,
+    index: false,
+    maxAge: '30d',
+    immutable: true,
   });
 
   app.useGlobalPipes(buildValidationPipe());

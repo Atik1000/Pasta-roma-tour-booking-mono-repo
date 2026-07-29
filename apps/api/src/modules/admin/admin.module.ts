@@ -10,6 +10,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -21,7 +22,15 @@ import {
 import { CurrentUser, Roles } from '../../common/decorators/auth.decorators';
 import { AdminService } from './admin.service';
 import { AdminWriteService } from './admin-write.service';
-import { SaveBlogDto, SaveTourDto, UpdateBookingDto, UpsertNoteDto } from './dto/admin-write.dto';
+import {
+  SaveBlogDto,
+  SaveLocationDto,
+  SaveSlotDto,
+  SaveTourDto,
+  SaveTourImagesDto,
+  UpdateBookingDto,
+  UpsertNoteDto,
+} from './dto/admin-write.dto';
 import {
   AdminBlogDto,
   AdminBookingDetailDto,
@@ -99,6 +108,30 @@ export class AdminController {
     return this.admin.listTours(query);
   }
 
+  @Get('blog-categories')
+  @ApiOperation({ summary: 'Blog categories' })
+  blogCategories() {
+    return this.admin.blogCategories();
+  }
+
+  @Get('locations')
+  @ApiOperation({ summary: 'Destinations' })
+  locations() {
+    return this.admin.locations();
+  }
+
+  @Get('tours/:id')
+  @ApiOperation({ summary: 'One tour, in editor shape' })
+  tourDetail(@Param('id', ParseUUIDPipe) id: string) {
+    return this.admin.tourDetail(id);
+  }
+
+  @Get('tours/:id/slots')
+  @ApiOperation({ summary: 'Departures for a tour on one date' })
+  tourSlots(@Param('id', ParseUUIDPipe) id: string, @Query('date') date?: string) {
+    return this.admin.tourSlots(id, date);
+  }
+
   // --- bookings --------------------------------------------------------------
 
   @Get('bookings/stats')
@@ -138,6 +171,12 @@ export class AdminController {
 
   // --- payments --------------------------------------------------------------
 
+  @Get('blogs/:id')
+  @ApiOperation({ summary: 'One post, in editor shape' })
+  blogDetail(@Param('id', ParseUUIDPipe) id: string) {
+    return this.admin.blogDetail(id);
+  }
+
   @Get('payments/stats')
   @ApiOperation({ summary: 'Payment totals' })
   paymentStats() {
@@ -174,6 +213,41 @@ export class AdminController {
   async deleteTour(@Param('id', ParseUUIDPipe) id: string) {
     await this.write.deleteTour(id);
     return { message: 'Tour deleted.' };
+  }
+
+  @Put('tours/:id/images')
+  @ApiOperation({ summary: 'Replace a tour gallery' })
+  async setTourImages(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SaveTourImagesDto) {
+    await this.write.setTourImages(id, dto);
+    return { message: 'Gallery updated.' };
+  }
+
+  @Post('tours/:id/slots')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Add a departure time' })
+  createSlot(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SaveSlotDto) {
+    return this.write.createSlot(id, dto);
+  }
+
+  @Patch('slots/:slotId')
+  @ApiOperation({ summary: 'Change a departure time or its capacity' })
+  async updateSlot(@Param('slotId', ParseUUIDPipe) slotId: string, @Body() dto: SaveSlotDto) {
+    await this.write.updateSlot(slotId, dto);
+    return { message: 'Time slot updated.' };
+  }
+
+  @Delete('slots/:slotId')
+  @ApiOperation({ summary: 'Remove a departure with no bookings' })
+  async deleteSlot(@Param('slotId', ParseUUIDPipe) slotId: string) {
+    await this.write.deleteSlot(slotId);
+    return { message: 'Time slot removed.' };
+  }
+
+  @Post('locations')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Add a destination' })
+  createLocation(@Body() dto: SaveLocationDto) {
+    return this.write.createLocation(dto);
   }
 
   @Post('blogs')

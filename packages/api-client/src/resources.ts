@@ -538,6 +538,129 @@ export class AdminResource {
   addBookingNote(reference: string, body: string): Promise<{ message: string }> {
     return this.http.post<{ message: string }>(`/admin/bookings/${reference}/notes`, { body });
   }
+
+  /** Replaces the whole gallery; the first URL becomes the cover. */
+  setTourImages(id: string, urls: string[]): Promise<{ message: string }> {
+    return this.http.put<{ message: string }>(`/admin/tours/${id}/images`, { urls });
+  }
+
+  tour(id: string): Promise<AdminTourDetail> {
+    return this.http.get<AdminTourDetail>(`/admin/tours/${id}`);
+  }
+
+  blog(id: string): Promise<AdminBlogDetail> {
+    return this.http.get<AdminBlogDetail>(`/admin/blogs/${id}`);
+  }
+
+  blogCategories(): Promise<{ id: string; name: string }[]> {
+    return this.http.get<{ id: string; name: string }[]>('/admin/blog-categories');
+  }
+
+  locations(): Promise<AdminLocation[]> {
+    return this.http.get<AdminLocation[]>('/admin/locations');
+  }
+
+  tourSlots(id: string, date?: string): Promise<AdminSlot[]> {
+    return this.http.get<AdminSlot[]>(`/admin/tours/${id}/slots`, { params: { date } });
+  }
+
+  createSlot(tourId: string, payload: SaveSlotPayload): Promise<{ id: string }> {
+    return this.http.post<{ id: string }>(`/admin/tours/${tourId}/slots`, payload);
+  }
+
+  updateSlot(slotId: string, payload: SaveSlotPayload): Promise<{ message: string }> {
+    return this.http.patch<{ message: string }>(`/admin/slots/${slotId}`, payload);
+  }
+
+  deleteSlot(slotId: string): Promise<{ message: string }> {
+    return this.http.delete<{ message: string }>(`/admin/slots/${slotId}`);
+  }
+
+  createLocation(payload: SaveLocationPayload): Promise<{ id: string; name: string }> {
+    return this.http.post<{ id: string; name: string }>('/admin/locations', payload);
+  }
+
+  /**
+   * Multipart, so this bypasses the JSON helpers. The browser sets the
+   * boundary itself — setting Content-Type by hand would break the parse.
+   */
+  uploadImage(file: File): Promise<UploadResult> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<UploadResult, FormData>('/admin/uploads', form);
+  }
+}
+
+/** One post in the shape the admin editor edits. */
+export interface AdminBlogDetail {
+  id: string;
+  title: string;
+  slug: string;
+  content: string;
+  status: 'PUBLISHED' | 'DRAFT';
+  coverImage: string | null;
+  categories: string[];
+  metaTitle: string | null;
+  metaDescription: string | null;
+  keywords: string[];
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminLocation {
+  id: string;
+  name: string;
+  country: string;
+}
+
+/** One tour in the shape the admin editor edits. */
+export interface AdminTourDetail {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  durationHours: number;
+  type: SaveTourPayload['type'];
+  location: string;
+  priceUsdMinor: number;
+  priceEurMinor: number;
+  maxTicketsPerTour: number;
+  highlights: string[];
+  included: string[];
+  goodToKnow: string[];
+  gallery: string[];
+  plans: { title: string; description: string }[];
+  meetingPointTitle: string | null;
+  meetingPointAddress: string | null;
+  published: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminSlot {
+  id: string;
+  date: string;
+  time: string;
+  capacity: number;
+  booked: number;
+}
+
+export interface SaveSlotPayload {
+  date: string;
+  time: string;
+  capacity: number;
+}
+
+export interface SaveLocationPayload {
+  name: string;
+  country: string;
+}
+
+export interface UploadResult {
+  url: string;
+  mimeType: string;
+  sizeBytes: number;
 }
 
 export interface SaveTourPayload {

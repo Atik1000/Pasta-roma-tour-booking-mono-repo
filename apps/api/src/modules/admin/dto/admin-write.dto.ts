@@ -10,6 +10,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -208,4 +209,46 @@ export class UpsertNoteDto {
   @MinLength(1, { message: 'Write something before saving the note.' })
   @MaxLength(2000)
   body!: string;
+}
+
+export class SaveSlotDto {
+  @ApiProperty({ example: '2030-06-01', description: 'Calendar date, YYYY-MM-DD.' })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'date must be in YYYY-MM-DD format.' })
+  date!: string;
+
+  @ApiProperty({ example: '09:30', description: '24-hour clock time.' })
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'time must be in HH:mm format.' })
+  time!: string;
+
+  @ApiProperty({ example: 20 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(1000)
+  capacity!: number;
+}
+
+export class SaveLocationDto {
+  @ApiProperty({ example: 'Milan, Italy' })
+  @IsString()
+  @MinLength(2, { message: 'Enter a location name.' })
+  @MaxLength(120)
+  name!: string;
+
+  @ApiProperty({ example: 'Italy' })
+  @IsString()
+  @MinLength(2, { message: 'Enter a country.' })
+  @MaxLength(80)
+  country!: string;
+}
+
+export class SaveTourImagesDto {
+  @ApiProperty({
+    type: [String],
+    description: 'Image URLs, in display order. The first is the cover.',
+  })
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsString({ each: true })
+  urls!: string[];
 }

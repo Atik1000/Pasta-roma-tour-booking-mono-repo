@@ -93,6 +93,22 @@ export function BlogEditor({
   });
   const contentRef = React.useRef<HTMLTextAreaElement>(null);
 
+  const coverInputRef = React.useRef<HTMLInputElement>(null);
+  const [coverError, setCoverError] = React.useState<string | null>(null);
+
+  const uploadCover = useMutation({
+    mutationFn: (file: File) => adminApi.admin.uploadImage(file),
+    onSuccess: (result) => {
+      setCoverError(null);
+      patch({ coverImage: result.url });
+    },
+    onError: (caught: unknown) => {
+      setCoverError(
+        isApiClientError(caught) ? caught.message : 'That upload failed. Please try again.',
+      );
+    },
+  });
+
   function patch(changes: Partial<BlogEditorValue>) {
     setValue((current) => ({ ...current, ...changes }));
   }
@@ -220,13 +236,19 @@ export function BlogEditor({
 
                 <div className="flex flex-col gap-1.5">
                   <span className="text-sm font-medium">Featured Image</span>
+                  {coverError ? (
+                    <p role="alert" className="text-danger-foreground text-sm">
+                      {coverError}
+                    </p>
+                  ) : null}
                   <div className="flex flex-wrap items-start gap-4">
                     {value.coverImage ? (
                       <span className="relative">
-                        <span
-                          role="img"
-                          aria-label="Featured image"
-                          className="rounded-field block h-24 w-40 bg-[linear-gradient(140deg,#f3ddb8,#e3b76f_55%,#b5751f)]"
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={value.coverImage}
+                          alt="Featured image"
+                          className="rounded-field bg-muted block h-24 w-40 object-cover"
                         />
                         <button
                           type="button"
@@ -241,13 +263,26 @@ export function BlogEditor({
 
                     <button
                       type="button"
-                      onClick={() => patch({ coverImage: 'cover' })}
-                      className="rounded-field border-border text-muted-foreground hover:border-primary hover:text-primary focus-visible:outline-ring flex h-24 flex-1 flex-col items-center justify-center gap-1.5 border border-dashed px-6 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
+                      disabled={uploadCover.isPending}
+                      onClick={() => coverInputRef.current?.click()}
+                      className="rounded-field border-border text-muted-foreground hover:border-primary hover:text-primary focus-visible:outline-ring flex h-24 flex-1 flex-col items-center justify-center gap-1.5 border border-dashed px-6 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60"
                     >
                       <Upload className="size-5" aria-hidden />
-                      Upload Image
+                      {uploadCover.isPending ? 'Uploading…' : 'Upload Image'}
                       <span className="text-xs">Recommended 1200x630px · JPG, PNG or WebP</span>
                     </button>
+                    <input
+                      ref={coverInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/avif"
+                      className="sr-only"
+                      aria-label="Choose a featured image"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) uploadCover.mutate(file);
+                        event.target.value = '';
+                      }}
+                    />
                   </div>
                 </div>
               </div>

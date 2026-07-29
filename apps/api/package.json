@@ -2,7 +2,7 @@
   "name": "@pasta/api",
   "version": "0.1.0",
   "private": true,
-  "description": "Pasta Roma Tour \u2014 NestJS API",
+  "description": "Pasta Roma Tour — NestJS API",
   "scripts": {
     "dev": "nest start --watch",
     "build": "prisma generate && nest build",
@@ -63,6 +63,7 @@
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
+    "@types/multer": "^2.2.0",
     "@types/node": "^22.10.10",
     "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.20.0",

@@ -24,6 +24,8 @@ export const envSchema = z.object({
   /** Public site and admin panel origins, used to build links inside emails. */
   SITE_URL: z.string().url().default('http://localhost:3000'),
   ADMIN_URL: z.string().url().default('http://localhost:3001'),
+  /** How the browser reaches this API — used to build absolute upload URLs. */
+  API_PUBLIC_URL: z.string().url().default('http://localhost:4000'),
 
   DATABASE_URL: optional(z.string().url()),
   REDIS_URL: optional(z.string().url()),

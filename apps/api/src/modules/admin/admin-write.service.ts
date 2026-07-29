@@ -5,7 +5,10 @@ import { BusinessErrorCode, BusinessException } from '../../common/exceptions/bu
 import { PrismaService } from '../../database/prisma.service';
 import type {
   SaveBlogDto,
+  SaveLocationDto,
+  SaveSlotDto,
   SaveTourDto,
+  SaveTourImagesDto,
   UpdateBookingDto,
   UpsertNoteDto,
 } from './dto/admin-write.dto';
@@ -162,6 +165,165 @@ export class AdminWriteService {
       where: { id },
       data: { deletedAt: new Date(), status: 'DRAFT' },
     });
+  }
+
+  // --- tour images -----------------------------------------------------------
+
+  /**
+   * Replaces a tour's gallery. Order is the display order and the first image
+   * becomes the cover, so the whole list is rewritten rather than patched.
+   */
+  async setTourImages(tourId: string, dto: SaveTourImagesDto): Promise<void> {
+    const tour = await this.prisma.tour.findFirst({
+      where: { id: tourId, deletedAt: null },
+      select: { id: true, title: true },
+    });
+
+    if (!tour) throw new NotFoundException('That tour could not be found.');
+
+    await this.prisma.$transaction([
+      this.prisma.tourImage.deleteMany({ where: { tourId } }),
+      this.prisma.tourImage.createMany({
+        data: dto.urls.map((url, position) => ({
+          tourId,
+          url,
+          alt: tour.title,
+          position,
+          isCover: position === 0,
+        })),
+      }),
+    ]);
+  }
+
+  // --- time slots ------------------------------------------------------------
+
+  /**
+   * Adds a departure. The schema's unique constraint on (tour, date, time) is
+   * the real guard; catching it here turns a database error into the message
+   * the admin UI already promises.
+   */
+  async createSlot(tourId: string, dto: SaveSlotDto): Promise<{ id: string }> {
+    const tour = await this.prisma.tour.findFirst({
+      where: { id: tourId, deletedAt: null },
+      select: { id: true },
+    });
+
+    if (!tour) throw new NotFoundException('That tour could not be found.');
+
+    const existing = await this.prisma.tourSlot.findUnique({
+      where: {
+        tourId_date_time: {
+          tourId,
+          date: new Date(`${dto.date}T00:00:00.000Z`),
+          time: dto.time,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (existing) {
+      throw new BusinessException(
+        BusinessErrorCode.DuplicateTimeSlot,
+        'That time already exists for this date.',
+      );
+    }
+
+    return this.prisma.tourSlot.create({
+      data: {
+        tourId,
+        date: new Date(`${dto.date}T00:00:00.000Z`),
+        time: dto.time,
+        capacity: dto.capacity,
+      },
+      select: { id: true },
+    });
+  }
+
+  async updateSlot(slotId: string, dto: SaveSlotDto): Promise<void> {
+    const slot = await this.prisma.tourSlot.findUnique({
+      where: { id: slotId },
+      select: { id: true, booked: true },
+    });
+
+    if (!slot) throw new NotFoundException('That time slot could not be found.');
+
+    // Capacity can never drop below the seats already sold, or the slot would
+    // read as oversold and availability would go negative.
+    if (dto.capacity < slot.booked) {
+      throw new BusinessException(
+        BusinessErrorCode.SlotUnavailable,
+        `${slot.booked} tickets are already booked on this departure, so capacity cannot go below that.`,
+      );
+    }
+
+    await this.prisma.tourSlot.update({
+      where: { id: slotId },
+      data: {
+        date: new Date(`${dto.date}T00:00:00.000Z`),
+        time: dto.time,
+        capacity: dto.capacity,
+      },
+    });
+  }
+
+  /** Refuses to remove a departure that travellers have already booked. */
+  async deleteSlot(slotId: string): Promise<void> {
+    const slot = await this.prisma.tourSlot.findUnique({
+      where: { id: slotId },
+      select: { id: true, booked: true },
+    });
+
+    if (!slot) throw new NotFoundException('That time slot could not be found.');
+
+    if (slot.booked > 0) {
+      throw new BusinessException(
+        BusinessErrorCode.SlotUnavailable,
+        'That departure has bookings and cannot be deleted. Cancel the bookings first.',
+      );
+    }
+
+    await this.prisma.tourSlot.delete({ where: { id: slotId } });
+  }
+
+  // --- locations -------------------------------------------------------------
+
+  async createLocation(dto: SaveLocationDto): Promise<{ id: string; name: string }> {
+    const existing = await this.prisma.location.findFirst({
+      where: { name: dto.name, deletedAt: null },
+      select: { id: true },
+    });
+
+    if (existing) {
+      throw new BusinessException(
+        BusinessErrorCode.SlugTaken,
+        'A location with that name already exists.',
+      );
+    }
+
+    return this.prisma.location.create({
+      data: {
+        name: dto.name.trim(),
+        country: dto.country.trim(),
+        slug: await this.uniqueLocationSlug(dto.name),
+      },
+      select: { id: true, name: true },
+    });
+  }
+
+  private async uniqueLocationSlug(desired: string): Promise<string> {
+    const base = slugify(desired) || 'location';
+    let candidate = base;
+
+    for (let attempt = 2; attempt < 100; attempt += 1) {
+      const taken = await this.prisma.location.findUnique({
+        where: { slug: candidate },
+        select: { id: true },
+      });
+      if (!taken) return candidate;
+      candidate = `${base}-${attempt}`;
+    }
+
+    throw new BusinessException(BusinessErrorCode.SlugTaken, 'Could not derive a unique slug.');
   }
 
   // --- blogs -----------------------------------------------------------------

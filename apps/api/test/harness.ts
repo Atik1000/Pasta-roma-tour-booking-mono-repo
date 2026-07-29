@@ -35,6 +35,11 @@ export async function createHarness(): Promise<Harness> {
   app.useLogger(false);
   await app.init();
 
+  // One listener for the whole suite. Without this, supertest binds a fresh
+  // ephemeral port per request and an occasional port reuse surfaces as a
+  // "socket hang up" that has nothing to do with the code under test.
+  await app.listen(0);
+
   const prisma = app.get(PrismaService);
 
   return {

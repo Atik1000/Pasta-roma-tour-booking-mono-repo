@@ -2,7 +2,7 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
-    "types": ["jest", "node"]
+    "types": ["jest", "node", "multer"]
   },
   "include": ["./**/*.ts", "../src/**/*.ts"]
 }
