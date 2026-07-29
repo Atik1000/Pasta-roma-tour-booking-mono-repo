@@ -19,12 +19,13 @@ import {
   StatusPill,
   type ColumnDef,
 } from '@pasta/ui';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDateTime, formatDuration, formatMoney } from '@pasta/utils';
 import { Eye, Filter, Pencil, RotateCcw, Search, Trash2 } from 'lucide-react';
 
 import type { AdminTour } from '@pasta/api-client';
 
+import { ConfirmDialog } from '@/components/common/confirm-dialog';
 import { adminApi } from '@/lib/session';
 
 export interface ToursTableProps {
@@ -54,6 +55,17 @@ export function ToursTable({ locations }: ToursTableProps) {
 
   const rows = query.data?.data ?? [];
   const total = query.data?.meta.total ?? 0;
+
+  const queryClient = useQueryClient();
+  const [pendingDelete, setPendingDelete] = React.useState<AdminTour | null>(null);
+
+  const remove = useMutation({
+    mutationFn: (id: string) => adminApi.admin.deleteTour(id),
+    onSuccess: async () => {
+      setPendingDelete(null);
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'tours'] });
+    },
+  });
 
   const columns = React.useMemo<ColumnDef<AdminTour, unknown>[]>(
     () => [
@@ -123,6 +135,7 @@ export function ToursTable({ locations }: ToursTableProps) {
               size="icon"
               aria-label={`Delete ${row.original.title}`}
               className="border-danger/30 text-danger hover:bg-danger-soft hover:text-danger"
+              onClick={() => setPendingDelete(row.original)}
             >
               <Trash2 aria-hidden />
             </Button>
@@ -239,6 +252,20 @@ export function ToursTable({ locations }: ToursTableProps) {
         </p>
         <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
       </div>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open: boolean) => !open && setPendingDelete(null)}
+        title="Delete this tour?"
+        description={
+          pendingDelete
+            ? `"${pendingDelete.title}" will be hidden from the website. Existing bookings for it are kept, so their history still resolves.`
+            : null
+        }
+        confirmLabel="Delete tour"
+        isPending={remove.isPending}
+        onConfirm={() => pendingDelete && remove.mutate(pendingDelete.id)}
+      />
     </div>
   );
 }

@@ -4,11 +4,13 @@ import { z } from 'zod';
 const publicEnvSchema = z.object({
   NEXT_PUBLIC_API_URL: z.string().url().default('http://localhost:4000/api/v1'),
   NEXT_PUBLIC_ADMIN_URL: z.string().url().default('http://localhost:3001'),
+  NEXT_PUBLIC_SITE_URL: z.string().url().default('http://localhost:3000'),
 });
 
 const parsed = publicEnvSchema.safeParse({
   NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
   NEXT_PUBLIC_ADMIN_URL: process.env.NEXT_PUBLIC_ADMIN_URL,
+  NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
 });
 
 if (!parsed.success) {

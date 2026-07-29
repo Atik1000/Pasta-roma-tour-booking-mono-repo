@@ -19,12 +19,14 @@ import {
   StatusPill,
   type ColumnDef,
 } from '@pasta/ui';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDateTime } from '@pasta/utils';
 import { Eye, Filter, Pencil, RotateCcw, Search, Trash2 } from 'lucide-react';
 
 import type { AdminBlog } from '@pasta/api-client';
 
+import { ConfirmDialog } from '@/components/common/confirm-dialog';
+import { env } from '@/lib/env';
 import { adminApi } from '@/lib/session';
 
 export function BlogsTable({ categories }: { categories: string[] }) {
@@ -48,6 +50,17 @@ export function BlogsTable({ categories }: { categories: string[] }) {
 
   const rows = query.data?.data ?? [];
   const total = query.data?.meta.total ?? 0;
+
+  const queryClient = useQueryClient();
+  const [pendingDelete, setPendingDelete] = React.useState<AdminBlog | null>(null);
+
+  const remove = useMutation({
+    mutationFn: (id: string) => adminApi.admin.deleteBlog(id),
+    onSuccess: async () => {
+      setPendingDelete(null);
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'blogs'] });
+    },
+  });
 
   const columns = React.useMemo<ColumnDef<AdminBlog, unknown>[]>(
     () => [
@@ -108,9 +121,13 @@ export function BlogsTable({ categories }: { categories: string[] }) {
               asChild
               aria-label={`Preview ${row.original.title}`}
             >
-              <Link href={`/blogs/${row.original.id}`}>
+              <a
+                href={`${env.NEXT_PUBLIC_SITE_URL}/blog/${row.original.slug}`}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
                 <Eye aria-hidden />
-              </Link>
+              </a>
             </Button>
             <Button variant="subtle" size="icon" asChild aria-label={`Edit ${row.original.title}`}>
               <Link href={`/blogs/${row.original.id}`}>
@@ -122,6 +139,7 @@ export function BlogsTable({ categories }: { categories: string[] }) {
               size="icon"
               aria-label={`Delete ${row.original.title}`}
               className="border-danger/30 text-danger hover:bg-danger-soft hover:text-danger"
+              onClick={() => setPendingDelete(row.original)}
             >
               <Trash2 aria-hidden />
             </Button>
@@ -228,6 +246,18 @@ export function BlogsTable({ categories }: { categories: string[] }) {
           onPageChange={setPage}
         />
       </div>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open: boolean) => !open && setPendingDelete(null)}
+        title="Delete this post?"
+        description={
+          pendingDelete ? `"${pendingDelete.title}" will be removed from the website.` : null
+        }
+        confirmLabel="Delete post"
+        isPending={remove.isPending}
+        onConfirm={() => pendingDelete && remove.mutate(pendingDelete.id)}
+      />
     </div>
   );
 }

@@ -36,7 +36,11 @@ import {
   X,
 } from 'lucide-react';
 
-import type { AdminBookingDetail } from '@pasta/api-client';
+import { isApiClientError, type AdminBookingDetail } from '@pasta/api-client';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+
+import { ConfirmDialog } from '@/components/common/confirm-dialog';
+import { adminApi } from '@/lib/session';
 
 /**
  * Booking detail. Everything on this screen is editable — customer, ticket
@@ -52,12 +56,54 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
   const [showNoteField, setShowNoteField] = React.useState(false);
 
   const [items, setItems] = React.useState(booking.items);
+  const [error, setError] = React.useState<string | null>(null);
+  const [confirmCancel, setConfirmCancel] = React.useState(false);
+  const queryClient = useQueryClient();
+
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['admin', 'booking'] });
+
+  const saveCustomer = useMutation({
+    mutationFn: () => adminApi.admin.updateBooking(booking.reference, { fullName, email, status }),
+    onSuccess: () => {
+      setError(null);
+      void refresh();
+    },
+    onError: (caught: unknown) =>
+      setError(isApiClientError(caught) ? caught.message : 'Could not save those details.'),
+  });
+
+  const addNote = useMutation({
+    mutationFn: (body: string) => adminApi.admin.addBookingNote(booking.reference, body),
+    onSuccess: () => void refresh(),
+  });
+
+  const cancelBooking = useMutation({
+    mutationFn: () => adminApi.admin.cancelBooking(booking.reference),
+    onSuccess: () => {
+      setConfirmCancel(false);
+      setStatus('CANCELLED');
+      void refresh();
+    },
+    onError: (caught: unknown) => {
+      setConfirmCancel(false);
+      setError(isApiClientError(caught) ? caught.message : 'Could not cancel that booking.');
+    },
+  });
 
   const subtotal = items.reduce((sum, item) => sum + item.amountMinor, 0);
   const totalTickets = items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
     <div className="flex flex-col gap-6">
+      {error ? (
+        <p
+          role="alert"
+          className="border-danger/30 bg-danger-soft text-danger-foreground rounded-card border px-4 py-3 text-sm"
+        >
+          {error}
+        </p>
+      ) : null}
+
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <Button variant="ghost" size="sm" asChild leadingIcon={<ArrowLeft aria-hidden />}>
@@ -140,10 +186,24 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
                 />
               </FormField>
               <div className="flex justify-end gap-2.5">
-                <Button variant="ghost" size="sm">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setFullName(booking.customer.fullName);
+                    setEmail(booking.customer.email);
+                    setError(null);
+                  }}
+                >
                   Cancel
                 </Button>
-                <Button size="sm">Save Changes</Button>
+                <Button
+                  size="sm"
+                  isLoading={saveCustomer.isPending}
+                  onClick={() => saveCustomer.mutate()}
+                >
+                  {saveCustomer.isSuccess ? 'Saved' : 'Save Changes'}
+                </Button>
               </div>
             </div>
           </CardContent>
@@ -433,11 +493,16 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
                     <Button
                       size="sm"
                       disabled={draftNote.trim().length === 0}
-                      onClick={() => {
-                        setNotes([...notes, draftNote.trim()]);
-                        setDraftNote('');
-                        setShowNoteField(false);
-                      }}
+                      isLoading={addNote.isPending}
+                      onClick={() =>
+                        addNote.mutate(draftNote.trim(), {
+                          onSuccess: () => {
+                            setNotes([...notes, draftNote.trim()]);
+                            setDraftNote('');
+                            setShowNoteField(false);
+                          },
+                        })
+                      }
                     >
                       Save note
                     </Button>
@@ -472,14 +537,26 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
                   block
                   className="border-danger text-danger hover:bg-danger-soft"
                   leadingIcon={<X aria-hidden />}
+                  disabled={status === 'CANCELLED'}
+                  onClick={() => setConfirmCancel(true)}
                 >
-                  Cancel Booking
+                  {status === 'CANCELLED' ? 'Booking Cancelled' : 'Cancel Booking'}
                 </Button>
               </div>
             </CardContent>
           </Card>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmCancel}
+        onOpenChange={setConfirmCancel}
+        title="Cancel this booking?"
+        description={`Booking ${booking.reference} will be cancelled and its seats returned to inventory. This cannot be undone.`}
+        confirmLabel="Cancel booking"
+        isPending={cancelBooking.isPending}
+        onConfirm={() => cancelBooking.mutate()}
+      />
     </div>
   );
 }
