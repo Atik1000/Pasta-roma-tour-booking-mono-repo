@@ -44,9 +44,6 @@ const between = (min: number, max: number): number => min + Math.floor(random() 
 
 // --- fixed reference points ---------------------------------------------------
 
-/** Anchoring dates to a constant keeps successive seeds byte-identical. */
-const TODAY = new Date('2024-05-21T00:00:00.000Z');
-
 function addDays(date: Date, days: number): Date {
   const next = new Date(date.getTime());
   next.setUTCDate(next.getUTCDate() + days);
@@ -56,6 +53,22 @@ function addDays(date: Date, days: number): Date {
 function dateOnly(date: Date): Date {
   return new Date(`${date.toISOString().slice(0, 10)}T00:00:00.000Z`);
 }
+
+/**
+ * Every date is relative to the day the seed runs.
+ *
+ * This used to be a fixed constant so that successive seeds were byte-identical.
+ * That is a real convenience, but it made the catalogue unbookable the moment
+ * real time moved past the anchor: departures were generated in the past, the
+ * availability endpoint correctly returned nothing, and the booking widget had
+ * no date to offer. Determinism is preserved where it matters — the PRNG is
+ * seeded, so the *shape* of the data is identical between runs — while the
+ * dates track reality.
+ */
+const TODAY = dateOnly(new Date());
+
+/** How many days of departures each tour gets. */
+const SLOT_DAYS = 365;
 
 const FIRST_NAMES = [
   'John',
@@ -293,10 +306,11 @@ async function seedCatalogue(): Promise<void> {
             description: plan.description,
           })),
         },
-        // 90 days of availability, starting a week before "today" so the admin
-        // screens have both past and future departures.
+        // A year of availability, starting a week back so the admin screens
+        // have both past and future departures. Generous on purpose: a demo
+        // environment should not run out of bookable dates in a few months.
         slots: {
-          create: Array.from({ length: 90 }, (_, dayOffset) =>
+          create: Array.from({ length: SLOT_DAYS }, (_, dayOffset) =>
             tour.times.map((time) => ({
               date: dateOnly(addDays(TODAY, dayOffset - 7)),
               time,
