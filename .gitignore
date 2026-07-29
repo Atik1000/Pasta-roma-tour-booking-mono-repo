@@ -39,3 +39,15 @@ apps/api/uploads/
 
 # prisma generated client
 apps/api/src/generated/
+
+# Source design images. Kept locally as the reference for every interpretation
+# decision (see PHASE-1-ANALYSIS.md), but not shipped in the repository —
+# they are ~19 MB of binary assets that no build step consumes.
+/Admin Panel/
+/Blogs/
+/Cart/
+/Cart checkout_ Booking Checkout/
+/Check Ticket availability/
+/Landing page/
+/My Bookings/
+/Tours/
