@@ -49,6 +49,18 @@ ssh-keygen -t ed25519 -C "deploy@pasta-roma-tour" -f ~/.ssh/id_deploy -N ""
 cat ~/.ssh/id_deploy.pub     # add under: repo → Settings → Deploy keys
 ```
 
+## Fast path — one command
+
+To get it running by IP with the demo data, skip steps 4–6:
+
+```bash
+./scripts/bootstrap.sh YOUR_SERVER_IP
+```
+
+It installs Docker if missing, writes `.env.production` with fresh secrets, opens the ports in `ufw`, deploys, seeds, and prints the URLs. Ports are configurable — `./scripts/bootstrap.sh YOUR_SERVER_IP 8080 8081 8082`.
+
+This serves **plain HTTP with no TLS**, which is fine for a first look and wrong for real traffic. Follow §6 before pointing a domain at it.
+
 ## 4. Configure
 
 ```bash

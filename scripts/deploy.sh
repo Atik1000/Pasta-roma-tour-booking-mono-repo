@@ -29,7 +29,10 @@ docker compose version >/dev/null 2>&1 || die "The Docker Compose plugin is miss
 
 # Refuse to deploy with the placeholder secrets still in place: an instance
 # that boots with a known JWT secret is an instance anyone can mint tokens for.
-if grep -qE '^(JWT_ACCESS_SECRET|JWT_REFRESH_SECRET|POSTGRES_PASSWORD)=(CHANGE_ME|)$' "$ENV_FILE"; then
+# `(CHANGE_ME)?$` rather than `(CHANGE_ME|)$`: an empty alternation is rejected
+# outright by some greps, and a guard that errors is a guard that lets the
+# deploy through.
+if grep -qE '^(JWT_ACCESS_SECRET|JWT_REFRESH_SECRET|POSTGRES_PASSWORD)=(CHANGE_ME)?$' "$ENV_FILE"; then
   die "$ENV_FILE still has placeholder secrets. Fill them in before deploying."
 fi
 
