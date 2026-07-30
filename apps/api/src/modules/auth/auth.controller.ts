@@ -174,7 +174,11 @@ export class AuthController {
   private cookieOptions() {
     return {
       httpOnly: true,
-      secure: this.config.isProduction,
+      // Keyed to the scheme actually in use, not to NODE_ENV: a `Secure` cookie
+      // is never returned over plain http, so a production host without a
+      // certificate would drop the refresh cookie and log the panel out on
+      // every reload.
+      secure: this.config.isHttps,
       sameSite: 'lax' as const,
       // Scoped to the refresh and logout endpoints only.
       path: `/${this.config.prefix}/auth`,

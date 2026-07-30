@@ -14,12 +14,15 @@ import {
   Req,
   Res,
 } from '@nestjs/common';
+import { ConfigType } from '@nestjs/config';
+import { Inject } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 
 import { ApiEnvelopeResponse } from '../../common/decorators/api-response.decorator';
 import { Public } from '../../common/decorators/auth.decorators';
 import { CurrencyQueryDto } from '../../common/dto/currency-query.dto';
+import { appConfig } from '../../config/configuration';
 import { CartService } from './cart.service';
 import { AddCartItemDto, CartDto, SetCartCurrencyDto, UpdateCartItemDto } from './dto/cart.dto';
 
@@ -31,7 +34,10 @@ const CART_COOKIE_MAX_AGE_MS = 14 * 86_400_000;
 @Controller('cart')
 @Public()
 export class CartController {
-  constructor(private readonly cart: CartService) {}
+  constructor(
+    private readonly cart: CartService,
+    @Inject(appConfig.KEY) private readonly config: ConfigType<typeof appConfig>,
+  ) {}
 
   /**
    * Reads the cart session from the cookie, minting one when absent. The id is
@@ -47,7 +53,11 @@ export class CartController {
     response.cookie(CART_COOKIE, sessionId, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      // Same reasoning as the refresh cookie: keyed to the scheme in use, not
+      // to NODE_ENV. Marked Secure on a plain-http host, this cookie never
+      // comes back, so every request mints a fresh cart and the basket appears
+      // to empty itself between pages.
+      secure: this.config.isHttps,
       maxAge: CART_COOKIE_MAX_AGE_MS,
       path: '/',
     });

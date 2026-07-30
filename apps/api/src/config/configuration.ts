@@ -30,6 +30,21 @@ export const appConfig = registerAs('app', () => {
     adminUrl: parsed.ADMIN_URL,
     apiPublicUrl: parsed.API_PUBLIC_URL,
     swaggerEnabled: parsed.SWAGGER_ENABLED,
+
+    /**
+     * Whether this deployment is actually reached over TLS.
+     *
+     * Derived from the configured public URLs rather than from NODE_ENV. A
+     * `Secure` cookie is never sent back over plain `http://`, so keying it to
+     * "is production" silently breaks the session on any production host that
+     * has not had a certificate put in front of it yet — you log in, and the
+     * next request arrives with no refresh cookie at all.
+     *
+     * Reading the scheme instead makes it self-correcting: put nginx and a
+     * certificate in front, change these URLs to https, and cookies become
+     * Secure again with no code change.
+     */
+    isHttps: parsed.ADMIN_URL.startsWith('https://') && parsed.SITE_URL.startsWith('https://'),
   };
 });
 
