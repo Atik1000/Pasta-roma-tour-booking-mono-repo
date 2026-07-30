@@ -49,6 +49,27 @@ compose() { docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"; }
 # minutes into one clear line.
 port_from_env() { grep -E "^$1=" "$ENV_FILE" | cut -d= -f2 | tr -d '[:space:]'; }
 
+# Host ports this stack already publishes, one per line.
+#
+# Asked of `docker inspect` rather than scraped out of `compose ps --format`:
+# the `{{.Publishers}}` field renders as a Go struct — `[{0.0.0.0 3000 8080
+# tcp}]` on Compose 2.40 — with no `:8080->` anywhere in it. Grepping for that
+# arrow made the guard blind to the stack's own ports, so it mistook them for a
+# foreign process and refused every redeploy. It only ever passed on a fresh
+# host, where nothing was listening yet. `.HostPort` has been stable for years.
+stack_ports() {
+  local ids
+  ids="$(compose ps -q 2>/dev/null)" || return 0
+  [[ -n "$ids" ]] || return 0
+
+  # shellcheck disable=SC2086
+  docker inspect \
+    --format '{{range $p, $bindings := .NetworkSettings.Ports}}{{range $bindings}}{{println .HostPort}}{{end}}{{end}}' \
+    $ids 2>/dev/null | grep -E '^[0-9]+$' || true
+}
+
+readonly OWN_PORTS="$(stack_ports)"
+
 for setting in WEB_PORT:3000 ADMIN_PORT:3001 API_PORT:4000; do
   name="${setting%%:*}"
   port="$(port_from_env "$name")"
@@ -56,7 +77,7 @@ for setting in WEB_PORT:3000 ADMIN_PORT:3001 API_PORT:4000; do
 
   # Skip ports this stack already holds — a redeploy legitimately reuses them.
   if ss -tln 2>/dev/null | grep -qE "[:.]${port}[[:space:]]" \
-     && ! compose ps --format '{{.Publishers}}' 2>/dev/null | grep -q ":${port}->"; then
+     && ! grep -qx "$port" <<<"$OWN_PORTS"; then
     die "Port ${port} (${name}) is already in use by something else. Change it in ${ENV_FILE}, or free the port. What holds it: ss -tlnp | grep :${port}"
   fi
 done
