@@ -28,7 +28,24 @@ export const appConfig = registerAs('app', () => {
       .filter(Boolean),
     siteUrl: parsed.SITE_URL,
     adminUrl: parsed.ADMIN_URL,
-    apiPublicUrl: parsed.API_PUBLIC_URL,
+
+    /**
+     * The origin uploaded images are served from.
+     *
+     * Two things were wrong here, and together they made every uploaded image
+     * load as a broken image while the upload itself reported success.
+     *
+     * The deployment writes `PUBLIC_API_URL` — bootstrap.sh, the compose file
+     * and .env.production.example all use that spelling — but this config read
+     * `API_PUBLIC_URL`, which nothing ever set. So it fell through to the
+     * localhost default and every image URL pointed at the *visitor's* machine.
+     *
+     * And `PUBLIC_API_URL` carries the API prefix, while static uploads are
+     * mounted outside it (`useStaticAssets` ignores `setGlobalPrefix`, so the
+     * files live at `/uploads`, not `/api/v1/uploads`). Taking the origin drops
+     * the prefix and leaves exactly the scheme, host and port the browser needs.
+     */
+    apiPublicUrl: new URL(parsed.PUBLIC_API_URL ?? parsed.API_PUBLIC_URL).origin,
     swaggerEnabled: parsed.SWAGGER_ENABLED,
 
     /**

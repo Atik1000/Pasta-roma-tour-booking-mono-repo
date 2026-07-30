@@ -25,6 +25,7 @@ import { slugify, wordCount } from '@pasta/utils';
 import { useMutation } from '@tanstack/react-query';
 import { env } from '@/lib/env';
 import { adminApi } from '@/lib/session';
+import { ACCEPT_ATTRIBUTE, useStagedImages } from '@/lib/staged-images';
 
 import {
   AlertTriangle,
@@ -33,6 +34,7 @@ import {
   Eye,
   Heading2,
   Heading3,
+  ImagePlus,
   Italic,
   Link2,
   List,
@@ -107,11 +109,19 @@ export function BlogEditor({
 
   const coverInputRef = React.useRef<HTMLInputElement>(null);
   const [coverError, setCoverError] = React.useState<string | null>(null);
+  const {
+    staged: stagedCovers,
+    rejected: coverRejected,
+    add: addCover,
+    clear: clearCover,
+  } = useStagedImages();
+  const pendingCover = stagedCovers[0];
 
   const uploadCover = useMutation({
     mutationFn: (file: File) => adminApi.admin.uploadImage(file),
     onSuccess: (result) => {
       setCoverError(null);
+      clearCover();
       toast.success('Image uploaded');
       patch({ coverImage: result.url });
     },
@@ -289,29 +299,75 @@ export function BlogEditor({
                       </span>
                     ) : null}
 
+                    {pendingCover ? (
+                      <span className="relative">
+                        {/* A local object URL — nothing has been sent yet. */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={pendingCover.previewUrl}
+                          alt={pendingCover.file.name}
+                          className="rounded-field border-primary bg-muted block h-24 w-40 border-2 object-cover"
+                        />
+                        <span className="bg-primary text-primary-foreground absolute bottom-1.5 left-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium">
+                          Preview
+                        </span>
+                      </span>
+                    ) : null}
+
                     <button
                       type="button"
                       disabled={uploadCover.isPending}
                       onClick={() => coverInputRef.current?.click()}
                       className="rounded-field border-border text-muted-foreground hover:border-primary hover:text-primary focus-visible:outline-ring flex h-24 flex-1 flex-col items-center justify-center gap-1.5 border border-dashed px-6 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60"
                     >
-                      <Upload className="size-5" aria-hidden />
-                      {uploadCover.isPending ? 'Uploading…' : 'Upload Image'}
+                      <ImagePlus className="size-5" aria-hidden />
+                      {pendingCover ? 'Choose a different image' : 'Choose Image'}
                       <span className="text-xs">Recommended 1200x630px · JPG, PNG or WebP</span>
                     </button>
                     <input
                       ref={coverInputRef}
                       type="file"
-                      accept="image/jpeg,image/png,image/webp,image/avif"
+                      accept={ACCEPT_ATTRIBUTE}
                       className="sr-only"
                       aria-label="Choose a featured image"
                       onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file) uploadCover.mutate(file);
+                        // Staged, not sent: one cover, so a new pick replaces
+                        // whatever was waiting.
+                        clearCover();
+                        addCover(Array.from(event.target.files ?? []));
                         event.target.value = '';
                       }}
                     />
                   </div>
+
+                  {coverRejected ? (
+                    <p role="alert" className="text-danger-foreground text-sm">
+                      {coverRejected}
+                    </p>
+                  ) : null}
+
+                  {pendingCover ? (
+                    <div className="mt-1 flex flex-wrap items-center gap-2.5">
+                      <Button
+                        type="button"
+                        size="sm"
+                        isLoading={uploadCover.isPending}
+                        leadingIcon={<Upload aria-hidden />}
+                        onClick={() => uploadCover.mutate(pendingCover.file)}
+                      >
+                        {uploadCover.isPending ? 'Uploading…' : 'Upload Image'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={uploadCover.isPending}
+                        onClick={clearCover}
+                      >
+                        Discard
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </CardContent>

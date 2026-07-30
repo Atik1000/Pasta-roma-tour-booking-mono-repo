@@ -70,6 +70,9 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS}
       SITE_URL: ${SITE_URL:?set SITE_URL}
       ADMIN_URL: ${ADMIN_URL:?set ADMIN_URL}
+      # Needed to build absolute upload URLs. Without it the API fell back to
+      # localhost and served image links that pointed at the visitor's machine.
+      PUBLIC_API_URL: ${PUBLIC_API_URL:?set PUBLIC_API_URL}
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pasta_roma_tour}?schema=public
       REDIS_URL: redis://redis:6379
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set JWT_ACCESS_SECRET}
@@ -84,6 +87,11 @@ services:
       THROTTLE_TTL_SECONDS: ${THROTTLE_TTL_SECONDS:-60}
       THROTTLE_LIMIT: ${THROTTLE_LIMIT:-120}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+    # Uploaded images are written to the working directory. Without a volume
+    # they live only in the container layer, so every release deleted every
+    # image the client had uploaded.
+    volumes:
+      - uploads:/app/apps/api/uploads
     # Loopback by default, so a reverse proxy can terminate TLS in front.
     # Set BIND_HOST=0.0.0.0 to reach the app directly by IP — convenient for a
     # first look, but it serves plain HTTP with no TLS, so do not leave a real
@@ -134,3 +142,4 @@ services:
 volumes:
   postgres-data:
   redis-data:
+  uploads:

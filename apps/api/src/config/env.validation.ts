@@ -24,8 +24,17 @@ export const envSchema = z.object({
   /** Public site and admin panel origins, used to build links inside emails. */
   SITE_URL: z.string().url().default('http://localhost:3000'),
   ADMIN_URL: z.string().url().default('http://localhost:3001'),
-  /** How the browser reaches this API — used to build absolute upload URLs. */
+  /**
+   * How the browser reaches this API — used to build absolute upload URLs.
+   *
+   * `PUBLIC_API_URL` is the name the deployment scripts, the compose file and
+   * `.env.production.example` all use, and it carries the API prefix
+   * (`http://host:8082/api/v1`). `API_PUBLIC_URL` is the older, prefix-less
+   * spelling. Both are accepted and the origin is taken from whichever is set —
+   * see `apiPublicUrl` in configuration.ts for why that mismatch mattered.
+   */
   API_PUBLIC_URL: z.string().url().default('http://localhost:4000'),
+  PUBLIC_API_URL: optional(z.string().url()),
 
   DATABASE_URL: optional(z.string().url()),
   REDIS_URL: optional(z.string().url()),

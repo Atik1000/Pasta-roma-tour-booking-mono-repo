@@ -5,15 +5,18 @@ import * as React from 'react';
 import { Button, Card, CardContent, useToast } from '@pasta/ui';
 import { isApiClientError } from '@pasta/api-client';
 import { useMutation } from '@tanstack/react-query';
-import { Upload, X } from 'lucide-react';
+import { ImagePlus, Upload, X } from 'lucide-react';
 
 import { adminApi } from '@/lib/session';
+import { ACCEPT_ATTRIBUTE, useStagedImages } from '@/lib/staged-images';
 
 /**
  * Tour gallery.
  *
- * Files upload as soon as they are chosen — the API returns a URL, and that URL
- * is what the editor holds. Order is display order and the first image is the
+ * Choosing files stages them: they are shown straight from disk and nothing is
+ * sent until Upload is pressed, so a wrong picture is discarded rather than
+ * uploaded and then deleted. On upload the API returns a URL, and that URL is
+ * what the editor holds. Order is display order and the first image is the
  * cover, so removing the first one promotes the next.
  *
  * Persistence differs by mode: an existing tour writes the list straight away,
@@ -33,6 +36,7 @@ export function TourGalleryPanel({
 
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const { staged, rejected, add, remove: unstage, clear } = useStagedImages();
 
   const upload = useMutation({
     mutationFn: async (files: File[]) => {
@@ -45,6 +49,7 @@ export function TourGalleryPanel({
     },
     onSuccess: (urls) => {
       setError(null);
+      clear();
       toast.success(
         urls.length === 1 ? 'Photo uploaded' : `${urls.length} photos uploaded`,
         tourId ? 'The gallery has been saved.' : 'They attach when you save the tour.',
@@ -124,25 +129,89 @@ export function TourGalleryPanel({
               disabled={upload.isPending}
               className="rounded-field border-border text-muted-foreground hover:border-primary hover:text-primary focus-visible:outline-ring flex h-24 w-36 flex-col items-center justify-center gap-1.5 border border-dashed text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60"
             >
-              <Upload className="size-5" aria-hidden />
-              {upload.isPending ? 'Uploading…' : 'Add Photos'}
+              <ImagePlus className="size-5" aria-hidden />
+              Choose Photos
             </button>
             <input
               ref={inputRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/avif"
+              accept={ACCEPT_ATTRIBUTE}
               multiple
               className="sr-only"
               aria-label="Choose gallery images"
               onChange={(event) => {
-                const files = Array.from(event.target.files ?? []);
-                if (files.length) upload.mutate(files);
+                add(Array.from(event.target.files ?? []));
                 // Reset so choosing the same file twice still fires a change.
                 event.target.value = '';
               }}
             />
           </li>
         </ul>
+
+        {rejected ? (
+          <p role="alert" className="text-danger-foreground mt-3 text-sm">
+            {rejected}
+          </p>
+        ) : null}
+
+        {staged.length > 0 ? (
+          <div className="rounded-card border-border bg-muted/30 mt-4 border p-4">
+            <h3 className="text-sm font-medium">
+              {staged.length === 1 ? '1 photo ready to upload' : `${staged.length} photos ready`}
+            </h3>
+            <p className="text-muted-foreground mt-0.5 text-xs">
+              Nothing has been sent yet. Check them, then upload.
+            </p>
+
+            <ul className="mt-3 flex flex-wrap gap-3">
+              {staged.map((item) => (
+                <li key={item.id} className="relative">
+                  {/* A local object URL, so the Next image loader is bypassed. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={item.previewUrl}
+                    alt={item.file.name}
+                    className="rounded-field border-border bg-muted block h-24 w-36 border object-cover"
+                  />
+                  <button
+                    type="button"
+                    aria-label={`Remove ${item.file.name} before uploading`}
+                    disabled={upload.isPending}
+                    onClick={() => unstage(item.id)}
+                    className="bg-cream-900/70 hover:bg-danger focus-visible:outline-ring absolute right-1.5 top-1.5 flex size-6 items-center justify-center rounded-full text-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60"
+                  >
+                    <X className="size-3.5" aria-hidden />
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-4 flex flex-wrap gap-2.5">
+              <Button
+                type="button"
+                size="sm"
+                isLoading={upload.isPending}
+                leadingIcon={<Upload aria-hidden />}
+                onClick={() => upload.mutate(staged.map((item) => item.file))}
+              >
+                {upload.isPending
+                  ? 'Uploading…'
+                  : staged.length === 1
+                    ? 'Upload Photo'
+                    : `Upload ${staged.length} Photos`}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={upload.isPending}
+                onClick={clear}
+              >
+                Discard
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         <p className="text-muted-foreground mt-3 text-xs">
           You can upload multiple images. Recommended size: 1920x1080px. Max 10MB per image.
