@@ -59,6 +59,14 @@ COPY --from=builder --chown=nestjs:nodejs /app/apps/api/prisma.config.ts ./apps/
 # enough for `db seed` to run inside this image.
 COPY --from=builder --chown=nestjs:nodejs /app/apps/api/src/generated ./apps/api/src/generated
 
+# Uploads are written here at runtime, and a named volume is mounted over it.
+# The directory has to exist in the image, owned by the runtime user: Docker
+# seeds a new volume from the image path, ownership included, but a path that
+# is absent from the image yields a volume owned by root — which this process,
+# running as nestjs, cannot write to. Without this the first upload after the
+# volume was introduced failed with EACCES.
+RUN mkdir -p /app/apps/api/uploads && chown nestjs:nodejs /app/apps/api/uploads
+
 USER nestjs
 WORKDIR /app/apps/api
 EXPOSE 4000
