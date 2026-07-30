@@ -6,6 +6,7 @@ import {
   ApiPaginatedResponse,
 } from '../../common/decorators/api-response.decorator';
 import { Public } from '../../common/decorators/auth.decorators';
+import { CurrencyQueryDto } from '../../common/dto/currency-query.dto';
 import {
   AvailabilityDayDto,
   AvailabilityQueryDto,
@@ -33,15 +34,18 @@ export class ToursController {
   @Get(':slug')
   @ApiOperation({ summary: 'A single published tour' })
   @ApiEnvelopeResponse(TourDetailDto)
-  findOne(@Param('slug') slug: string): Promise<TourDetailDto> {
-    return this.tours.findBySlug(slug);
+  findOne(@Param('slug') slug: string, @Query() query: CurrencyQueryDto): Promise<TourDetailDto> {
+    return this.tours.findBySlug(slug, query.currency);
   }
 
   @Get(':slug/related')
   @ApiOperation({ summary: 'Other tours to show alongside this one' })
   @ApiEnvelopeResponse(TourSummaryDto)
-  related(@Param('slug') slug: string): Promise<TourSummaryDto[]> {
-    return this.tours.related(slug);
+  related(
+    @Param('slug') slug: string,
+    @Query() query: CurrencyQueryDto,
+  ): Promise<TourSummaryDto[]> {
+    return this.tours.related(slug, query.currency);
   }
 
   @Get(':slug/slots')

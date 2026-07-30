@@ -5,6 +5,7 @@ import { TrendingTours } from '@/components/home/trending-tours';
 import { Footer } from '@/components/layout/footer';
 import { Navbar } from '@/components/layout/navbar';
 import { api, safely } from '@/lib/api';
+import { activeCurrency } from '@/lib/currency.server';
 
 export const metadata: Metadata = {
   title: 'Discover Rome Like Never Before',
@@ -13,12 +14,14 @@ export const metadata: Metadata = {
   alternates: { canonical: '/' },
 };
 
-/** Trending tours change rarely; revalidate rather than hitting the API per visit. */
-export const revalidate = 300;
-
 export default async function HomePage() {
+  // Trending Tours carries prices, so this page is rendered per request: two
+  // visitors on `/` can have chosen different currencies, and a shared cached
+  // copy would show one of them the wrong figures.
+  const currency = await activeCurrency();
+
   const { data: tours } = await safely(
-    api.tours.list({ sort: 'popular', limit: 8 }),
+    api.tours.list({ sort: 'popular', limit: 8, currency }),
     {
       data: [],
       meta: {

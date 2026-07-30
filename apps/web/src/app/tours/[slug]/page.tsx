@@ -10,18 +10,15 @@ import { Footer } from '@/components/layout/footer';
 import { Navbar } from '@/components/layout/navbar';
 import { BookingSidebar } from '@/components/tours/booking-sidebar';
 import { api, safely } from '@/lib/api';
+import { activeCurrency } from '@/lib/currency.server';
 
 type Params = Promise<{ slug: string }>;
 
 /**
- * Pre-render the catalogue at build time. If the API is unreachable — a CI
- * build with no backend, for instance — this yields nothing and every tour is
- * simply rendered on demand instead of failing the build.
+ * Rendered per request rather than pre-rendered: the price shown depends on the
+ * currency the visitor chose, so there is no one correct copy of this page to
+ * build ahead of time.
  */
-export async function generateStaticParams() {
-  const catalogue = await safely(api.tours.list({ limit: 100 }), null, 'tours.list (prerender)');
-  return (catalogue?.data ?? []).map((tour) => ({ slug: tour.slug }));
-}
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { slug } = await params;
@@ -50,11 +47,12 @@ function GalleryImage({ className, label }: { className?: string; label: string 
 
 export default async function TourDetailPage({ params }: { params: Params }) {
   const { slug } = await params;
-  const tour = await safely(api.tours.bySlug(slug), null, 'tours.bySlug');
+  const currency = await activeCurrency();
+  const tour = await safely(api.tours.bySlug(slug, currency), null, 'tours.bySlug');
 
   if (!tour) notFound();
 
-  const related = await safely(api.tours.related(slug), [], 'tours.related');
+  const related = await safely(api.tours.related(slug, currency), [], 'tours.related');
 
   return (
     <>

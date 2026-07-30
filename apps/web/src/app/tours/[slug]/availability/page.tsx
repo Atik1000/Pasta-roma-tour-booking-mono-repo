@@ -8,6 +8,7 @@ import { Footer } from '@/components/layout/footer';
 import { Navbar } from '@/components/layout/navbar';
 import { AvailabilityPicker } from '@/components/tours/availability-picker';
 import { api, safely } from '@/lib/api';
+import { activeCurrency } from '@/lib/currency.server';
 
 type Params = Promise<{ slug: string }>;
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -32,7 +33,8 @@ export default async function AvailabilityPage({
 }) {
   const { slug } = await params;
   const query = await searchParams;
-  const tour = await safely(api.tours.bySlug(slug), null, 'tours.bySlug');
+  const currency = await activeCurrency();
+  const tour = await safely(api.tours.bySlug(slug, currency), null, 'tours.bySlug');
 
   if (!tour) notFound();
 

@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 import { Clock, Facebook, Instagram, Mail, MapPin, Phone, Youtube } from 'lucide-react';
 
-import { SkylineBackdrop, Wordmark } from './brand';
+import { SkylineBackdrop, TripAdvisorMark, Wordmark } from './brand';
 
 const QUICK_LINKS = [
   { label: 'Search Tours', href: '/tours' },
@@ -23,10 +23,18 @@ const SUPPORT_LINKS = [
   { label: 'Contact Us', href: '/contact' },
 ];
 
+/**
+ * Four marks, as drawn in every footer in the designs.
+ *
+ * These point at the platforms rather than at a profile: the brand's own
+ * handles are not part of the designs, so they are the one thing here still
+ * waiting on the client. Replace each `href` with the real profile URL.
+ */
 const SOCIALS = [
   { label: 'Facebook', href: 'https://facebook.com', icon: Facebook },
   { label: 'Instagram', href: 'https://instagram.com', icon: Instagram },
   { label: 'YouTube', href: 'https://youtube.com', icon: Youtube },
+  { label: 'TripAdvisor', href: 'https://tripadvisor.com', icon: TripAdvisorMark },
 ];
 
 /** Payment marks. Drawn inline so no third-party assets are loaded. */

@@ -8,6 +8,7 @@ import { Footer } from '@/components/layout/footer';
 import { Navbar } from '@/components/layout/navbar';
 import { PageHero } from '@/components/layout/page-hero';
 import { api, safely } from '@/lib/api';
+import { activeCurrency } from '@/lib/currency.server';
 
 export const metadata: Metadata = {
   title: 'Locations',
@@ -17,9 +18,11 @@ export const metadata: Metadata = {
 
 /** Target of the Locations link in the navbar and footer. */
 export default async function LocationsPage() {
+  const currency = await activeCurrency();
+
   const [locations, catalogue] = await Promise.all([
     safely(api.locations.list(), [], 'locations.list'),
-    safely(api.tours.list({ limit: 100 }), null, 'tours.list'),
+    safely(api.tours.list({ limit: 100, currency }), null, 'tours.list'),
   ]);
 
   const summaries = locations.map((entry) => {
@@ -66,7 +69,9 @@ export default async function LocationsPage() {
                       {count === 0
                         ? 'New tours coming soon.'
                         : `${count} ${count === 1 ? 'tour' : 'tours'}${
-                            cheapest === undefined ? '' : ` from ${formatPriceFrom(cheapest)}`
+                            cheapest === undefined
+                              ? ''
+                              : ` from ${formatPriceFrom(cheapest, currency)}`
                           }`}
                     </p>
                     <span className="text-primary mt-auto inline-flex items-center gap-1.5 pt-3 text-sm">

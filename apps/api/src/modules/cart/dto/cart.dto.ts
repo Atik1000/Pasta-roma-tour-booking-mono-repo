@@ -1,6 +1,9 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CurrencyCode } from '@pasta/types';
 import { Type } from 'class-transformer';
-import { IsInt, IsString, IsUUID, Max, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+
+import { CURRENCY_CODES } from '../../../common/dto/currency-query.dto';
 
 export class AddCartItemDto {
   @ApiProperty({ description: 'Tour slug.' })
@@ -17,6 +20,21 @@ export class AddCartItemDto {
   @Min(1)
   @Max(50)
   quantity!: number;
+
+  @ApiPropertyOptional({
+    enum: CURRENCY_CODES,
+    default: CurrencyCode.EUR,
+    description: 'Currency the visitor is browsing in. Re-prices the whole basket.',
+  })
+  @IsOptional()
+  @IsIn(CURRENCY_CODES)
+  currency?: CurrencyCode;
+}
+
+export class SetCartCurrencyDto {
+  @ApiProperty({ enum: CURRENCY_CODES })
+  @IsIn(CURRENCY_CODES)
+  currency!: CurrencyCode;
 }
 
 export class UpdateCartItemDto {
@@ -38,7 +56,7 @@ export class CartItemDto {
   @ApiProperty() quantity!: number;
   @ApiProperty({ description: 'Adult price in minor units.' }) unitPriceMinor!: number;
   @ApiProperty() amountMinor!: number;
-  @ApiProperty({ enum: ['EUR', 'USD'] }) currency!: 'EUR' | 'USD';
+  @ApiProperty({ enum: CURRENCY_CODES }) currency!: CurrencyCode;
   @ApiProperty({ description: 'Seats still available on this slot.' }) remaining!: number;
   @ApiProperty({ description: 'Per-booking ticket cap for this tour.' }) maxTickets!: number;
   @ApiProperty({ description: 'True when the catalogue price changed since adding.' })
@@ -51,5 +69,5 @@ export class CartDto {
   @ApiProperty() subtotalMinor!: number;
   @ApiProperty() bookingFeeMinor!: number;
   @ApiProperty() totalMinor!: number;
-  @ApiProperty({ enum: ['EUR', 'USD'] }) currency!: 'EUR' | 'USD';
+  @ApiProperty({ enum: CURRENCY_CODES }) currency!: CurrencyCode;
 }

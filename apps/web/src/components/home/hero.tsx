@@ -8,7 +8,7 @@ import { Button, cn } from '@pasta/ui';
 import { Search, X } from 'lucide-react';
 
 import { SkylineBackdrop } from '@/components/layout/brand';
-import { RECENT_SEARCHES } from '@/lib/placeholder-data';
+import { forgetSearch, readRecentSearches, rememberSearch } from '@/lib/recent-searches';
 
 /**
  * Placeholder for the client's hero photography.
@@ -31,11 +31,20 @@ function HeroBackdrop() {
 export function Hero() {
   const router = useRouter();
   const [query, setQuery] = React.useState('');
-  const [recent, setRecent] = React.useState<string[]>(RECENT_SEARCHES);
+  const [recent, setRecent] = React.useState<string[]>([]);
+
+  // Read after mount: local storage does not exist while server-rendering, and
+  // reading it during render would make the markup differ from the client's.
+  React.useEffect(() => setRecent(readRecentSearches()), []);
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
     const term = query.trim();
+
+    if (term) {
+      setRecent(rememberSearch(term));
+    }
+
     router.push(term ? `/tours?q=${encodeURIComponent(term)}` : '/tours');
   }
 
@@ -100,7 +109,10 @@ export function Hero() {
                     >
                       <button
                         type="button"
-                        onClick={() => router.push(`/tours?q=${encodeURIComponent(term)}`)}
+                        onClick={() => {
+                          setRecent(rememberSearch(term));
+                          router.push(`/tours?q=${encodeURIComponent(term)}`);
+                        }}
                         className="text-foreground hover:text-primary focus-visible:outline-ring rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
                       >
                         {term}
@@ -108,7 +120,7 @@ export function Hero() {
                       <button
                         type="button"
                         aria-label={`Remove ${term} from recent searches`}
-                        onClick={() => setRecent((items) => items.filter((item) => item !== term))}
+                        onClick={() => setRecent(forgetSearch(term))}
                         className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-ring flex size-6 items-center justify-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
                       >
                         <X className="size-3.5" aria-hidden />

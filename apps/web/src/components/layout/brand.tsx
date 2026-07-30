@@ -1,3 +1,5 @@
+import type { SVGProps } from 'react';
+
 import { cn } from '@pasta/ui';
 
 /**
@@ -44,6 +46,36 @@ export function Wordmark({
         ) : null}
       </span>
     </span>
+  );
+}
+
+/**
+ * TripAdvisor's owl, drawn as the two-eye mark.
+ *
+ * Inline like the rest of the marks here: `lucide-react` carries no
+ * TripAdvisor glyph, and the footer deliberately loads no third-party assets.
+ * Swap in the official SVG from their brand kit when the client supplies one.
+ */
+export function TripAdvisorMark({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      {...props}
+      viewBox="0 0 24 24"
+      aria-hidden
+      focusable="false"
+      className={cn('size-4', className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+    >
+      {/* Brow, then the two eyes with their pupils. */}
+      <path d="M7.5 6.5h9M3.4 9.2 6 7.3M20.6 9.2 18 7.3" />
+      <circle cx="7" cy="13.5" r="4.2" />
+      <circle cx="17" cy="13.5" r="4.2" />
+      <circle cx="7" cy="13.5" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="17" cy="13.5" r="1.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }
 

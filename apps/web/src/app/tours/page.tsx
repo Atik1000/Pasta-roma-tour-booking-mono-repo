@@ -10,6 +10,7 @@ import { PageHero } from '@/components/layout/page-hero';
 import { TourFilters } from '@/components/tours/tour-filters';
 import { ToursPagination } from '@/components/tours/tours-pagination';
 import { api, safely } from '@/lib/api';
+import { activeCurrency } from '@/lib/currency.server';
 
 export const metadata: Metadata = {
   title: 'Explore Our Tours',
@@ -30,6 +31,7 @@ export default async function ToursPage({ searchParams }: { searchParams: Search
   const params = await searchParams;
 
   const page = Number.parseInt(first(params.page) ?? '1', 10) || 1;
+  const currency = await activeCurrency();
 
   const { data: tours, meta } = await safely(
     api.tours.list({
@@ -38,6 +40,7 @@ export default async function ToursPage({ searchParams }: { searchParams: Search
       sort: first(params.sort) as 'popular' | 'price-asc' | 'price-desc' | 'duration' | undefined,
       page,
       limit: PER_PAGE,
+      currency,
     }),
     {
       data: [],

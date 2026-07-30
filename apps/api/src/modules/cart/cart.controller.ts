@@ -9,6 +9,8 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
+  Query,
   Req,
   Res,
 } from '@nestjs/common';
@@ -17,8 +19,9 @@ import type { Request, Response } from 'express';
 
 import { ApiEnvelopeResponse } from '../../common/decorators/api-response.decorator';
 import { Public } from '../../common/decorators/auth.decorators';
+import { CurrencyQueryDto } from '../../common/dto/currency-query.dto';
 import { CartService } from './cart.service';
-import { AddCartItemDto, CartDto, UpdateCartItemDto } from './dto/cart.dto';
+import { AddCartItemDto, CartDto, SetCartCurrencyDto, UpdateCartItemDto } from './dto/cart.dto';
 
 /** Anonymous cart cookie. Not httpOnly-sensitive — it holds no credentials. */
 export const CART_COOKIE = 'prt_cart';
@@ -55,8 +58,23 @@ export class CartController {
   @Get()
   @ApiOperation({ summary: 'The current cart' })
   @ApiEnvelopeResponse(CartDto)
-  get(@Req() request: Request, @Res({ passthrough: true }) response: Response): Promise<CartDto> {
-    return this.cart.get(this.sessionOf(request, response));
+  get(
+    @Query() query: CurrencyQueryDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<CartDto> {
+    return this.cart.get(this.sessionOf(request, response), query.currency);
+  }
+
+  @Put('currency')
+  @ApiOperation({ summary: 'Re-price the whole basket in another currency' })
+  @ApiEnvelopeResponse(CartDto)
+  setCurrency(
+    @Body() dto: SetCartCurrencyDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<CartDto> {
+    return this.cart.setCurrency(this.sessionOf(request, response), dto.currency);
   }
 
   @Post('items')
@@ -76,10 +94,16 @@ export class CartController {
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCartItemDto,
+    @Query() query: CurrencyQueryDto,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<CartDto> {
-    return this.cart.updateItem(this.sessionOf(request, response), id, dto.quantity);
+    return this.cart.updateItem(
+      this.sessionOf(request, response),
+      id,
+      dto.quantity,
+      query.currency,
+    );
   }
 
   @Delete('items/:id')
@@ -87,16 +111,21 @@ export class CartController {
   @ApiEnvelopeResponse(CartDto)
   remove(
     @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: CurrencyQueryDto,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<CartDto> {
-    return this.cart.removeItem(this.sessionOf(request, response), id);
+    return this.cart.removeItem(this.sessionOf(request, response), id, query.currency);
   }
 
   @Delete()
   @ApiOperation({ summary: 'Empty the cart' })
   @ApiEnvelopeResponse(CartDto)
-  clear(@Req() request: Request, @Res({ passthrough: true }) response: Response): Promise<CartDto> {
-    return this.cart.clear(this.sessionOf(request, response));
+  clear(
+    @Query() query: CurrencyQueryDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<CartDto> {
+    return this.cart.clear(this.sessionOf(request, response), query.currency);
   }
 }

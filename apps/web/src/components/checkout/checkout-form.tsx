@@ -31,6 +31,7 @@ import {
   Users,
 } from 'lucide-react';
 
+import { useCurrency } from '@/components/currency-provider';
 import { browserApi } from '@/lib/browser-api';
 import { clearCartCount, syncCartCount } from '@/lib/cart-store';
 
@@ -53,20 +54,27 @@ export function CheckoutForm() {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [formError, setFormError] = React.useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = React.useState<Record<string, string>>({});
+  const { currency } = useCurrency();
 
   React.useEffect(() => {
     let cancelled = false;
 
     void browserApi.cart
-      .get()
+      .get(currency)
       .then((result) => {
         if (cancelled) return;
         setCart(result);
-        setHolders(
+        // Re-read on a currency switch as well as on mount, so the totals here
+        // match the re-priced basket. Names already typed are carried over —
+        // re-pricing must not cost the traveller their form.
+        setHolders((current) =>
           Object.fromEntries(
             result.items.map((item) => [
               item.id,
-              Array.from({ length: item.quantity }, () => ({ firstName: '', lastName: '' })),
+              Array.from(
+                { length: item.quantity },
+                (_, index) => current[item.id]?.[index] ?? { firstName: '', lastName: '' },
+              ),
             ]),
           ),
         );
@@ -78,7 +86,7 @@ export function CheckoutForm() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currency]);
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const holdersComplete = (cart?.items ?? []).every((item) =>
@@ -94,7 +102,7 @@ export function CheckoutForm() {
   }
 
   async function removeItem(itemId: string) {
-    const updated = await browserApi.cart.remove(itemId);
+    const updated = await browserApi.cart.remove(itemId, currency);
     syncCartCount(updated);
     setCart(updated);
     setHolders((current) => {
@@ -127,7 +135,7 @@ export function CheckoutForm() {
         setFormError(caught.message);
         setFieldErrors(caught.fieldErrors);
         // A sold-out slot invalidates the cart we are showing.
-        const refreshed = await browserApi.cart.get().catch(() => cart);
+        const refreshed = await browserApi.cart.get(currency).catch(() => cart);
         setCart(refreshed);
         syncCartCount(refreshed);
       } else {

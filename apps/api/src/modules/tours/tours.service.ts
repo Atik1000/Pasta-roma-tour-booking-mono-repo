@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { PaginationMeta } from '@pasta/types';
+import { CurrencyCode, type PaginationMeta } from '@pasta/types';
 import { buildPaginationMeta, normalizePagination } from '@pasta/utils';
 
+import { adultPriceMinor } from '../../common/dto/currency-query.dto';
 import { PrismaService } from '../../database/prisma.service';
 import type { Prisma } from '../../generated/prisma/client';
 import type {
@@ -15,13 +16,27 @@ import type {
 /** Only published, non-deleted tours are ever visible to the public site. */
 const PUBLIC_TOUR_FILTER = { status: 'PUBLISHED', deletedAt: null } as const;
 
-const ORDER_BY: Record<string, Prisma.TourOrderByWithRelationInput[]> = {
-  popular: [{ isBestseller: 'desc' }, { sortOrder: 'asc' }],
-  'price-asc': [{ priceAdultEur: 'asc' }],
-  'price-desc': [{ priceAdultEur: 'desc' }],
-  duration: [{ durationHours: 'asc' }],
-  newest: [{ createdAt: 'desc' }],
-};
+/**
+ * Sorting by price has to follow the currency being displayed: the two prices
+ * are entered independently, so ordering by the EUR column can contradict the
+ * USD figures on screen.
+ */
+function orderBy(sort: string, currency: CurrencyCode): Prisma.TourOrderByWithRelationInput[] {
+  const priceColumn = currency === CurrencyCode.USD ? 'priceAdultUsd' : 'priceAdultEur';
+
+  switch (sort) {
+    case 'price-asc':
+      return [{ [priceColumn]: 'asc' }];
+    case 'price-desc':
+      return [{ [priceColumn]: 'desc' }];
+    case 'duration':
+      return [{ durationHours: 'asc' }];
+    case 'newest':
+      return [{ createdAt: 'desc' }];
+    default:
+      return [{ isBestseller: 'desc' }, { sortOrder: 'asc' }];
+  }
+}
 
 @Injectable()
 export class ToursService {
@@ -46,7 +61,7 @@ export class ToursService {
     const [rows, total] = await Promise.all([
       this.prisma.tour.findMany({
         where,
-        orderBy: ORDER_BY[query.sort] ?? ORDER_BY.popular,
+        orderBy: orderBy(query.sort, query.currency),
         skip,
         take,
         include: {
@@ -64,8 +79,8 @@ export class ToursService {
         title: row.title,
         location: row.location.name,
         durationHours: Number(row.durationHours),
-        priceMinor: row.priceAdultEur,
-        currency: 'EUR' as const,
+        priceMinor: adultPriceMinor(row, query.currency),
+        currency: query.currency,
         description: row.description,
         isBestseller: row.isBestseller,
         coverImage: row.images[0]?.url ?? null,
@@ -74,7 +89,10 @@ export class ToursService {
     };
   }
 
-  async findBySlug(slug: string): Promise<TourDetailDto> {
+  async findBySlug(
+    slug: string,
+    currency: CurrencyCode = CurrencyCode.EUR,
+  ): Promise<TourDetailDto> {
     const tour = await this.prisma.tour.findFirst({
       where: { slug, ...PUBLIC_TOUR_FILTER },
       include: {
@@ -98,8 +116,8 @@ export class ToursService {
       title: tour.title,
       location: tour.location.name,
       durationHours: Number(tour.durationHours),
-      priceMinor: tour.priceAdultEur,
-      currency: 'EUR',
+      priceMinor: adultPriceMinor(tour, currency),
+      currency,
       description: tour.description,
       isBestseller: tour.isBestseller,
       coverImage: tour.images.find((image) => image.isCover)?.url ?? tour.images[0]?.url ?? null,
@@ -175,7 +193,11 @@ export class ToursService {
   }
 
   /** Other published tours, for the "You might also like" rail. */
-  async related(slug: string, limit = 3): Promise<TourSummaryDto[]> {
+  async related(
+    slug: string,
+    currency: CurrencyCode = CurrencyCode.EUR,
+    limit = 3,
+  ): Promise<TourSummaryDto[]> {
     const rows = await this.prisma.tour.findMany({
       where: { ...PUBLIC_TOUR_FILTER, slug: { not: slug } },
       orderBy: [{ isBestseller: 'desc' }, { sortOrder: 'asc' }],
@@ -192,8 +214,8 @@ export class ToursService {
       title: row.title,
       location: row.location.name,
       durationHours: Number(row.durationHours),
-      priceMinor: row.priceAdultEur,
-      currency: 'EUR' as const,
+      priceMinor: adultPriceMinor(row, currency),
+      currency,
       description: row.description,
       isBestseller: row.isBestseller,
       coverImage: row.images[0]?.url ?? null,

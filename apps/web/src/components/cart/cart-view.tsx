@@ -30,6 +30,7 @@ import {
   Trash2,
 } from 'lucide-react';
 
+import { useCurrency } from '@/components/currency-provider';
 import { browserApi } from '@/lib/browser-api';
 import { syncCartCount } from '@/lib/cart-store';
 
@@ -64,23 +65,26 @@ export function CartView() {
   const [cart, setCart] = React.useState<Cart | null>(null);
   const [pendingId, setPendingId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  // Passed on every read so an emptied basket reports the currency being
+  // browsed rather than falling back to €.
+  const { currency } = useCurrency();
 
   React.useEffect(() => {
     let cancelled = false;
 
     void browserApi.cart
-      .get()
+      .get(currency)
       .then((result) => {
         if (!cancelled) setCart(result);
       })
       .catch(() => {
-        if (!cancelled) setCart(EMPTY_CART);
+        if (!cancelled) setCart({ ...EMPTY_CART, currency });
       });
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currency]);
 
   async function mutate(itemId: string | null, action: () => Promise<Cart>) {
     setPendingId(itemId ?? 'all');
@@ -94,7 +98,7 @@ export function CartView() {
       setError(
         isApiClientError(caught) ? caught.message : 'Something went wrong. Please try again.',
       );
-      const loaded = await browserApi.cart.get().catch(() => EMPTY_CART);
+      const loaded = await browserApi.cart.get(currency).catch(() => ({ ...EMPTY_CART, currency }));
       setCart(loaded);
       syncCartCount(loaded);
     } finally {
@@ -184,7 +188,9 @@ export function CartView() {
                   size="icon"
                   aria-label={`Remove ${item.title} from cart`}
                   disabled={pendingId !== null}
-                  onClick={() => void mutate(item.id, () => browserApi.cart.remove(item.id))}
+                  onClick={() =>
+                    void mutate(item.id, () => browserApi.cart.remove(item.id, currency))
+                  }
                 >
                   <Trash2 className="text-danger" aria-hidden />
                 </Button>
@@ -227,7 +233,7 @@ export function CartView() {
                             max={Math.min(item.maxTickets, item.quantity + item.remaining)}
                             onChange={(quantity) =>
                               void mutate(item.id, () =>
-                                browserApi.cart.updateQuantity(item.id, quantity),
+                                browserApi.cart.updateQuantity(item.id, quantity, currency),
                               )
                             }
                           />
@@ -261,7 +267,7 @@ export function CartView() {
             className="border-danger text-danger hover:bg-danger-soft"
             leadingIcon={<Trash2 aria-hidden />}
             disabled={pendingId !== null}
-            onClick={() => void mutate(null, () => browserApi.cart.clear())}
+            onClick={() => void mutate(null, () => browserApi.cart.clear(currency))}
           >
             Clear Cart
           </Button>

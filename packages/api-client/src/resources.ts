@@ -57,6 +57,8 @@ export interface ListToursParams {
   sort?: 'popular' | 'price-asc' | 'price-desc' | 'duration' | 'newest';
   page?: number;
   limit?: number;
+  /** Prices are returned in this currency. Defaults to EUR server-side. */
+  currency?: CurrencyCode;
 }
 
 export class ToursResource {
@@ -66,12 +68,12 @@ export class ToursResource {
     return this.http.getPaginated<TourSummary>('/tours', { params });
   }
 
-  bySlug(slug: string): Promise<TourDetail> {
-    return this.http.get<TourDetail>(`/tours/${slug}`);
+  bySlug(slug: string, currency?: CurrencyCode): Promise<TourDetail> {
+    return this.http.get<TourDetail>(`/tours/${slug}`, { params: { currency } });
   }
 
-  related(slug: string): Promise<TourSummary[]> {
-    return this.http.get<TourSummary[]>(`/tours/${slug}/related`);
+  related(slug: string, currency?: CurrencyCode): Promise<TourSummary[]> {
+    return this.http.get<TourSummary[]>(`/tours/${slug}/related`, { params: { currency } });
   }
 
   slots(slug: string, date: string): Promise<TourSlot[]> {
@@ -250,24 +252,34 @@ export interface Cart {
 export class CartResource {
   constructor(private readonly http: HttpClient) {}
 
-  get(): Promise<Cart> {
-    return this.http.get<Cart>('/cart');
+  /**
+   * `currency` is the one the visitor is browsing in. It decides the symbols an
+   * empty basket reports; a basket with items keeps its own currency until
+   * `setCurrency` re-prices it.
+   */
+  get(currency?: CurrencyCode): Promise<Cart> {
+    return this.http.get<Cart>('/cart', { params: { currency } });
   }
 
-  add(slug: string, slotId: string, quantity: number): Promise<Cart> {
-    return this.http.post<Cart>('/cart/items', { slug, slotId, quantity });
+  add(slug: string, slotId: string, quantity: number, currency?: CurrencyCode): Promise<Cart> {
+    return this.http.post<Cart>('/cart/items', { slug, slotId, quantity, currency });
   }
 
-  updateQuantity(itemId: string, quantity: number): Promise<Cart> {
-    return this.http.patch<Cart>(`/cart/items/${itemId}`, { quantity });
+  /** Re-prices every line in `currency`. A basket is never mixed-currency. */
+  setCurrency(currency: CurrencyCode): Promise<Cart> {
+    return this.http.put<Cart>('/cart/currency', { currency });
   }
 
-  remove(itemId: string): Promise<Cart> {
-    return this.http.delete<Cart>(`/cart/items/${itemId}`);
+  updateQuantity(itemId: string, quantity: number, currency?: CurrencyCode): Promise<Cart> {
+    return this.http.patch<Cart>(`/cart/items/${itemId}`, { quantity }, { params: { currency } });
   }
 
-  clear(): Promise<Cart> {
-    return this.http.delete<Cart>('/cart');
+  remove(itemId: string, currency?: CurrencyCode): Promise<Cart> {
+    return this.http.delete<Cart>(`/cart/items/${itemId}`, { params: { currency } });
+  }
+
+  clear(currency?: CurrencyCode): Promise<Cart> {
+    return this.http.delete<Cart>('/cart', { params: { currency } });
   }
 }
 

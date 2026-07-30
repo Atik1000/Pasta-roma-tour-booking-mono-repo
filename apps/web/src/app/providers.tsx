@@ -3,9 +3,12 @@
 import * as React from 'react';
 
 import { isApiClientError } from '@pasta/api-client';
+import type { CurrencyCode } from '@pasta/types';
 import { ToastProvider } from '@pasta/ui';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from 'next-themes';
+
+import { CurrencyProvider } from '@/components/currency-provider';
 
 function makeQueryClient(): QueryClient {
   return new QueryClient({
@@ -36,13 +39,21 @@ function getQueryClient(): QueryClient {
   return browserQueryClient;
 }
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({
+  currency,
+  children,
+}: {
+  currency: CurrencyCode;
+  children: React.ReactNode;
+}) {
   const queryClient = getQueryClient();
 
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
-        <ToastProvider>{children}</ToastProvider>
+        <CurrencyProvider initial={currency}>
+          <ToastProvider>{children}</ToastProvider>
+        </CurrencyProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

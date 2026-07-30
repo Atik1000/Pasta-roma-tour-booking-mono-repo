@@ -1,7 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CurrencyCode } from '@pasta/types';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 
+import { CURRENCY_CODES } from '../../../common/dto/currency-query.dto';
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 
 export const TOUR_SORT_OPTIONS = [
@@ -30,6 +32,11 @@ export class ListToursQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsIn(TOUR_SORT_OPTIONS)
   sort: TourSort = 'popular';
+
+  @ApiPropertyOptional({ enum: CURRENCY_CODES, default: CurrencyCode.EUR })
+  @IsOptional()
+  @IsIn(CURRENCY_CODES)
+  currency: CurrencyCode = CurrencyCode.EUR;
 }
 
 export class TourImageDto {
@@ -46,7 +53,7 @@ export class TourSummaryDto {
   @ApiProperty({ example: 2.5 }) durationHours!: number;
   @ApiProperty({ description: 'Adult price in minor units.', example: 5900 })
   priceMinor!: number;
-  @ApiProperty({ enum: ['EUR', 'USD'] }) currency!: 'EUR' | 'USD';
+  @ApiProperty({ enum: CURRENCY_CODES }) currency!: CurrencyCode;
   @ApiProperty() description!: string;
   @ApiProperty() isBestseller!: boolean;
   @ApiPropertyOptional({ nullable: true }) coverImage!: string | null;

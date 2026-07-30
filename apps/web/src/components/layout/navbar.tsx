@@ -19,9 +19,10 @@ import {
 } from '@pasta/ui';
 import { ChevronDown, Menu, ShoppingCart, User } from 'lucide-react';
 
+import { useCurrency } from '@/components/currency-provider';
 import { browserApi } from '@/lib/browser-api';
 import { useCartCount } from '@/lib/cart-store';
-import { CURRENCIES } from '@/lib/placeholder-data';
+import { CURRENCIES } from '@/lib/currency';
 
 import { Wordmark } from './brand';
 
@@ -42,7 +43,9 @@ export function Navbar({ overlay = false }: NavbarProps) {
   // page, and threading a count through each one is how it ended up always
   // showing zero.
   const cartCount = useCartCount();
-  const [currency, setCurrency] = React.useState(CURRENCIES[0]?.code ?? 'EUR');
+  // Selecting a currency re-prices the basket and refreshes the page, so every
+  // figure on screen comes back from the API in the chosen currency.
+  const { currency, isSwitching, select } = useCurrency();
   const [locations, setLocations] = React.useState<string[]>([]);
 
   // The Locations menu reflects the catalogue, so it is read from the API.
@@ -132,13 +135,21 @@ export function Navbar({ overlay = false }: NavbarProps) {
 
           <li>
             <DropdownMenu>
-              <DropdownMenuTrigger className="hover:text-primary focus-visible:outline-ring flex items-center gap-1 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-4">
+              <DropdownMenuTrigger
+                disabled={isSwitching}
+                aria-label={`Currency: ${currency}. Change currency.`}
+                className="hover:text-primary focus-visible:outline-ring flex items-center gap-1 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 disabled:opacity-60"
+              >
                 {currency}
                 <ChevronDown className="size-4" aria-hidden />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
                 {CURRENCIES.map((entry) => (
-                  <DropdownMenuItem key={entry.code} onSelect={() => setCurrency(entry.code)}>
+                  <DropdownMenuItem
+                    key={entry.code}
+                    aria-current={entry.code === currency ? 'true' : undefined}
+                    onSelect={() => select(entry.code)}
+                  >
                     <span className="w-4">{entry.symbol}</span>
                     {entry.label}
                   </DropdownMenuItem>

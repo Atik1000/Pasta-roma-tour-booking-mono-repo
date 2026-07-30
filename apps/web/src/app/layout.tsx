@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter, Playfair_Display } from 'next/font/google';
 
+import { activeCurrency } from '@/lib/currency.server';
 import { env } from '@/lib/env';
 
 import { Providers } from './providers';
@@ -43,11 +44,15 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Read once here rather than in each page, so the header switcher and the
+  // server-rendered prices below it can never disagree on the first paint.
+  const currency = await activeCurrency();
+
   return (
     <html lang="en" suppressHydrationWarning className={`${inter.variable} ${playfair.variable}`}>
       <body className="min-h-dvh antialiased">
-        <Providers>{children}</Providers>
+        <Providers currency={currency}>{children}</Providers>
       </body>
     </html>
   );

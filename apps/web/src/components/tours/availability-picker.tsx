@@ -27,6 +27,7 @@ import {
   Zap,
 } from 'lucide-react';
 
+import { useCurrency } from '@/components/currency-provider';
 import { browserApi } from '@/lib/browser-api';
 import { syncCartCount } from '@/lib/cart-store';
 import { isApiClientError } from '@pasta/api-client';
@@ -93,6 +94,8 @@ export function AvailabilityPicker({
   const [slotId, setSlotId] = React.useState<string | undefined>(undefined);
   const [isLoadingSlots, setIsLoadingSlots] = React.useState(false);
   const [pendingAction, setPendingAction] = React.useState<'book' | 'cart' | null>(null);
+  // The basket is priced in whatever currency the visitor is browsing in.
+  const { currency: activeCurrency } = useCurrency();
   const [error, setError] = React.useState<string | null>(null);
 
   // The rail: one request per seven-day window.
@@ -160,7 +163,7 @@ export function AvailabilityPicker({
     setError(null);
 
     try {
-      syncCartCount(await browserApi.cart.add(slug, slotId, travellers));
+      syncCartCount(await browserApi.cart.add(slug, slotId, travellers, activeCurrency));
       router.push(intent === 'book' ? '/checkout' : '/cart');
     } catch (caught) {
       setError(

@@ -1,7 +1,9 @@
 import { randomBytes } from 'node:crypto';
 
 import { Injectable, Logger } from '@nestjs/common';
+import { CurrencyCode } from '@pasta/types';
 
+import { adultPriceMinor } from '../../common/dto/currency-query.dto';
 import { BusinessErrorCode, BusinessException } from '../../common/exceptions/business.exception';
 import { PrismaService } from '../../database/prisma.service';
 import { BOOKING_FEE_MINOR } from '../cart/cart.service';
@@ -49,7 +51,13 @@ export class CheckoutService {
         items: {
           include: {
             tour: {
-              select: { id: true, title: true, priceAdultEur: true, maxTicketsPerTour: true },
+              select: {
+                id: true,
+                title: true,
+                priceAdultEur: true,
+                priceAdultUsd: true,
+                maxTicketsPerTour: true,
+              },
             },
             slot: { select: { id: true, date: true, time: true } },
           },
@@ -70,12 +78,18 @@ export class CheckoutService {
       );
     }
 
+    /**
+     * The basket is single-currency by construction — adding an item or
+     * switching currency re-prices every line — so the first item names the
+     * currency this booking is taken and charged in.
+     */
+    const currency: CurrencyCode = cart.items[0]?.currency ?? CurrencyCode.EUR;
+
     // Reprice from the catalogue: a stale cart price is never charged.
-    const priced = cart.items.map((item) => ({
-      ...item,
-      unitPrice: item.tour.priceAdultEur,
-      amount: item.tour.priceAdultEur * item.quantity,
-    }));
+    const priced = cart.items.map((item) => {
+      const unitPrice = adultPriceMinor(item.tour, currency);
+      return { ...item, unitPrice, amount: unitPrice * item.quantity };
+    });
 
     const subtotal = priced.reduce((sum, item) => sum + item.amount, 0);
     const total = subtotal + BOOKING_FEE_MINOR;
@@ -113,7 +127,7 @@ export class CheckoutService {
           customerId: customer.id,
           status: 'PENDING',
           paymentStatus: 'PENDING',
-          currency: 'EUR',
+          currency,
           subtotal,
           bookingFee: BOOKING_FEE_MINOR,
           total,
@@ -148,7 +162,7 @@ export class CheckoutService {
               method: 'CARD',
               status: 'PENDING',
               amount: total,
-              currency: 'EUR',
+              currency,
             },
           },
         },
@@ -183,7 +197,7 @@ export class CheckoutService {
       reference: booking.reference,
       bookingId: booking.id,
       totalMinor: booking.total,
-      currency: 'EUR',
+      currency,
       status: 'PENDING',
       // Phase 9 continues with Stripe: this is where the PaymentIntent client
       // secret will be returned once STRIPE_SECRET_KEY is configured.
