@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 import { cn } from '@pasta/ui';
 import {
@@ -12,6 +12,8 @@ import {
   MapPinned,
   PenLine,
 } from 'lucide-react';
+
+import { signOut } from '@/lib/session';
 
 import { ColosseumMark, SkylineBackdrop } from './brand';
 
@@ -26,6 +28,7 @@ export const NAV_ITEMS = [
 
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const router = useRouter();
 
   return (
     <div className="bg-sidebar-gradient text-sidebar-foreground relative flex h-full flex-col overflow-hidden p-4">
@@ -63,14 +66,22 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
           );
         })}
 
-        <Link
-          href="/login"
-          onClick={onNavigate}
-          className="rounded-field text-sidebar-foreground/85 hover:text-sidebar-foreground mt-auto flex items-center gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/40"
+        {/*
+          A real sign-out, not a link to the login screen. As a plain link this
+          left the access token in memory and the refresh cookie alive, so
+          navigating back — or any other tab — was still signed in.
+        */}
+        <button
+          type="button"
+          onClick={() => {
+            onNavigate?.();
+            void signOut().finally(() => router.replace('/login'));
+          }}
+          className="rounded-field text-sidebar-foreground/85 hover:text-sidebar-foreground mt-auto flex items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/40"
         >
           <LogOut className="size-5 shrink-0" aria-hidden />
           Logout
-        </Link>
+        </button>
       </nav>
     </div>
   );

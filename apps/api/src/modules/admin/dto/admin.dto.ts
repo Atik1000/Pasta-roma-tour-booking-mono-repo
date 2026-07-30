@@ -1,13 +1,33 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsIn, IsInt, IsISO8601, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 
 const TOUR_STATUSES = ['ALL', 'PUBLISHED', 'DRAFT'] as const;
 const BOOKING_STATUSES = ['ALL', 'CONFIRMED', 'PENDING', 'CANCELLED'] as const;
 const PAYMENT_STATUSES = ['ALL', 'PAID', 'PENDING', 'REFUNDED', 'FAILED'] as const;
+const PAYMENT_METHODS = ['ALL', 'CARD', 'PAYPAL', 'APPLE_PAY'] as const;
 
-export class ListAdminToursQueryDto extends PaginationQueryDto {
+/**
+ * The advanced-filter fields the listing screens share.
+ *
+ * `from`/`to` are calendar dates rather than timestamps — the operator picks
+ * days, and each list decides which of its own columns the range applies to.
+ */
+class DateRangeQueryDto extends PaginationQueryDto {
+  @ApiPropertyOptional({ description: 'Inclusive start date, YYYY-MM-DD.' })
+  @IsOptional()
+  @IsISO8601()
+  from?: string;
+
+  @ApiPropertyOptional({ description: 'Inclusive end date, YYYY-MM-DD.' })
+  @IsOptional()
+  @IsISO8601()
+  to?: string;
+}
+
+export class ListAdminToursQueryDto extends DateRangeQueryDto {
   @ApiPropertyOptional({ enum: TOUR_STATUSES })
   @IsOptional()
   @IsIn(TOUR_STATUSES)
@@ -18,9 +38,23 @@ export class ListAdminToursQueryDto extends PaginationQueryDto {
   @IsString()
   @MaxLength(120)
   location?: string;
+
+  @ApiPropertyOptional({ description: 'Lowest adult price in minor units.' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  minPriceMinor?: number;
+
+  @ApiPropertyOptional({ description: 'Highest adult price in minor units.' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  maxPriceMinor?: number;
 }
 
-export class ListAdminBookingsQueryDto extends PaginationQueryDto {
+export class ListAdminBookingsQueryDto extends DateRangeQueryDto {
   @ApiPropertyOptional({ enum: BOOKING_STATUSES })
   @IsOptional()
   @IsIn(BOOKING_STATUSES)
@@ -30,9 +64,29 @@ export class ListAdminBookingsQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsIn(PAYMENT_STATUSES)
   paymentStatus?: 'ALL' | 'PAID' | 'PENDING' | 'REFUNDED' | 'FAILED';
+
+  @ApiPropertyOptional({ description: 'Tour id — only bookings containing this tour.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  tourId?: string;
+
+  @ApiPropertyOptional({ description: 'Lowest booking total in minor units.' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  minAmountMinor?: number;
+
+  @ApiPropertyOptional({ description: 'Highest booking total in minor units.' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  maxAmountMinor?: number;
 }
 
-export class ListAdminBlogsQueryDto extends PaginationQueryDto {
+export class ListAdminBlogsQueryDto extends DateRangeQueryDto {
   @ApiPropertyOptional({ enum: ['ALL', 'PUBLISHED', 'DRAFT'] })
   @IsOptional()
   @IsIn(['ALL', 'PUBLISHED', 'DRAFT'])
@@ -43,6 +97,31 @@ export class ListAdminBlogsQueryDto extends PaginationQueryDto {
   @IsString()
   @MaxLength(120)
   category?: string;
+}
+
+export class ListAdminPaymentsQueryDto extends DateRangeQueryDto {
+  @ApiPropertyOptional({ enum: PAYMENT_STATUSES })
+  @IsOptional()
+  @IsIn(PAYMENT_STATUSES)
+  status?: 'ALL' | 'PAID' | 'PENDING' | 'REFUNDED' | 'FAILED';
+
+  @ApiPropertyOptional({ enum: PAYMENT_METHODS })
+  @IsOptional()
+  @IsIn(PAYMENT_METHODS)
+  method?: 'ALL' | 'CARD' | 'PAYPAL' | 'APPLE_PAY';
+}
+
+/** The dashboard's date-range control narrows every figure on the screen. */
+export class DashboardRangeQueryDto {
+  @ApiPropertyOptional({ description: 'Inclusive start date, YYYY-MM-DD.' })
+  @IsOptional()
+  @IsISO8601()
+  from?: string;
+
+  @ApiPropertyOptional({ description: 'Inclusive end date, YYYY-MM-DD.' })
+  @IsOptional()
+  @IsISO8601()
+  to?: string;
 }
 
 export class DashboardStatsDto {
@@ -82,7 +161,12 @@ export class AdminBookingDto {
 
 export class AdminBookingItemDto {
   @ApiProperty() id!: string;
+  @ApiProperty() tourId!: string;
   @ApiProperty() title!: string;
+  /// The tour's current location and cover photo, so the row is recognisable at
+  /// a glance. Both are presentational — the money and title stay denormalised.
+  @ApiProperty() location!: string;
+  @ApiPropertyOptional({ nullable: true }) coverImage!: string | null;
   @ApiProperty() date!: string;
   @ApiProperty() time!: string;
   @ApiProperty() quantity!: number;
@@ -104,11 +188,19 @@ export class AdminBookingDetailDto {
   @ApiProperty({ type: [AdminBookingItemDto] }) items!: AdminBookingItemDto[];
   @ApiPropertyOptional({ nullable: true })
   payment!: {
+    id: string;
     method: string;
     status: string;
     transactionId: string | null;
     amountMinor: number;
     paidAt: string | null;
+    /**
+     * False when the payment came from Stripe. The record then belongs to the
+     * processor, and the admin screen shows it read-only — an operator typing a
+     * different captured amount would make every invoice, export and revenue
+     * figure disagree with the money that actually moved.
+     */
+    isManual: boolean;
   } | null;
   @ApiProperty() notes!: { id: string; body: string; createdAt: string }[];
 }
@@ -118,10 +210,18 @@ export class AdminBlogDto {
   @ApiProperty() title!: string;
   @ApiProperty() slug!: string;
   @ApiProperty() excerpt!: string;
+  @ApiPropertyOptional({ nullable: true }) coverImage!: string | null;
   @ApiProperty({ type: [String] }) categories!: string[];
   @ApiProperty({ enum: ['PUBLISHED', 'DRAFT'] }) status!: string;
   @ApiPropertyOptional({ nullable: true }) publishedAt!: string | null;
   @ApiProperty() updatedAt!: string;
+}
+
+export class TopTourDto {
+  @ApiPropertyOptional({ nullable: true }) id!: string | null;
+  @ApiProperty() title!: string;
+  @ApiProperty() bookings!: number;
+  @ApiPropertyOptional({ nullable: true }) coverImage!: string | null;
 }
 
 export class AdminPaymentDto {

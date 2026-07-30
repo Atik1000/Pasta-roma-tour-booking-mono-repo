@@ -96,4 +96,8 @@ See `docs/DEPLOYMENT.md` for the environment variables, health-check endpoints, 
 
 ## Status
 
-Every screen in the designs is built and running on live data. Known gaps: card payment is not wired (bookings are created `PENDING` and hold seats for 30 minutes), tour gallery and time-slot editing are not yet persisted, and imagery is placeholder.
+Every screen in the designs is built and running on live data, with filtering, paging and every control wired to the API.
+
+Known gaps: card payment is not wired (bookings are created `PENDING` and hold seats for 30 minutes, and `STRIPE_SECRET_KEY` being unset makes the payment endpoints answer 503), and the seeded imagery is placeholder URLs that do not resolve — `Thumbnail` falls back to the brand gradient for those.
+
+Payment records are editable in the admin panel only when the business recorded them itself. Anything Stripe captured is read-only there and the API rejects writes to it, so invoices, exports and the revenue figures cannot disagree with the money that actually moved. See `PaymentDetailsPanel` and `AdminWriteService.updatePayment`.

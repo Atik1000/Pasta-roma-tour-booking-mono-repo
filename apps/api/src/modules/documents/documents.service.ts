@@ -332,9 +332,19 @@ export class DocumentsService {
    * One row per booking, honouring the same filters as the bookings table so
    * an export always matches what the operator is looking at.
    */
+  /**
+   * The bookings table as CSV.
+   *
+   * Takes the same filter set as the listing, so the export always matches what
+   * the operator was looking at when they pressed the button.
+   */
   async bookingsCsv(filters: {
     search?: string;
     status?: string;
+    paymentStatus?: string;
+    tourId?: string;
+    minAmountMinor?: number;
+    maxAmountMinor?: number;
     from?: string;
     to?: string;
   }): Promise<string> {
@@ -343,6 +353,20 @@ export class DocumentsService {
         deletedAt: null,
         ...(filters.status && filters.status !== 'ALL'
           ? { status: filters.status as 'CONFIRMED' | 'PENDING' | 'CANCELLED' }
+          : {}),
+        ...(filters.paymentStatus && filters.paymentStatus !== 'ALL'
+          ? {
+              paymentStatus: filters.paymentStatus as 'PAID' | 'PENDING' | 'REFUNDED' | 'FAILED',
+            }
+          : {}),
+        ...(filters.tourId ? { items: { some: { tourId: filters.tourId } } } : {}),
+        ...(filters.minAmountMinor !== undefined || filters.maxAmountMinor !== undefined
+          ? {
+              total: {
+                ...(filters.minAmountMinor !== undefined ? { gte: filters.minAmountMinor } : {}),
+                ...(filters.maxAmountMinor !== undefined ? { lte: filters.maxAmountMinor } : {}),
+              },
+            }
           : {}),
         ...(filters.search
           ? {

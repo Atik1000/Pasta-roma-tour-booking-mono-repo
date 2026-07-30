@@ -368,7 +368,11 @@ export interface AdminBooking {
 
 export interface AdminBookingItem {
   id: string;
+  tourId: string;
   title: string;
+  /** The tour's current location and cover photo — presentational only. */
+  location: string;
+  coverImage: string | null;
   date: string;
   time: string;
   quantity: number;
@@ -389,11 +393,17 @@ export interface AdminBookingDetail {
   customer: { fullName: string; email: string };
   items: AdminBookingItem[];
   payment: {
+    id: string;
     method: string;
     transactionId: string | null;
     amountMinor: number;
     paidAt: string | null;
     status: PaymentStatusValue;
+    /**
+     * False for Stripe-captured payments. Those are the processor's record and
+     * the admin screen shows them read-only — the API rejects edits to them.
+     */
+    isManual: boolean;
   } | null;
   notes: { id: string; body: string; createdAt: string }[];
 }
@@ -403,10 +413,24 @@ export interface AdminBlog {
   title: string;
   slug: string;
   excerpt: string;
+  coverImage: string | null;
   categories: string[];
   status: 'PUBLISHED' | 'DRAFT';
   publishedAt: string | null;
   updatedAt: string;
+}
+
+export interface TopTour {
+  id: string | null;
+  title: string;
+  bookings: number;
+  coverImage: string | null;
+}
+
+/** Advanced-filter bounds every listing accepts. */
+export interface DateRangeParams {
+  from?: string;
+  to?: string;
 }
 
 export interface AdminPayment {
@@ -425,23 +449,27 @@ export interface AdminPayment {
 export class AdminResource {
   constructor(private readonly http: HttpClient) {}
 
-  dashboardStats(): Promise<DashboardStats> {
-    return this.http.get<DashboardStats>('/admin/dashboard/stats');
+  dashboardStats(params: DateRangeParams = {}): Promise<DashboardStats> {
+    return this.http.get<DashboardStats>('/admin/dashboard/stats', { params });
   }
 
-  bookingsSeries(): Promise<{ day: string; bookings: number }[]> {
-    return this.http.get<{ day: string; bookings: number }[]>('/admin/dashboard/bookings-series');
+  bookingsSeries(params: DateRangeParams = {}): Promise<{ day: string; bookings: number }[]> {
+    return this.http.get<{ day: string; bookings: number }[]>('/admin/dashboard/bookings-series', {
+      params,
+    });
   }
 
-  statusBreakdown(): Promise<{ name: string; value: number }[]> {
-    return this.http.get<{ name: string; value: number }[]>('/admin/dashboard/status-breakdown');
+  statusBreakdown(params: DateRangeParams = {}): Promise<{ name: string; value: number }[]> {
+    return this.http.get<{ name: string; value: number }[]>('/admin/dashboard/status-breakdown', {
+      params,
+    });
   }
 
-  topTours(): Promise<{ title: string; bookings: number }[]> {
-    return this.http.get<{ title: string; bookings: number }[]>('/admin/dashboard/top-tours');
+  topTours(params: DateRangeParams = {}): Promise<TopTour[]> {
+    return this.http.get<TopTour[]>('/admin/dashboard/top-tours', { params });
   }
 
-  recentBookings(): Promise<
+  recentBookings(params: DateRangeParams = {}): Promise<
     {
       reference: string;
       customer: string;
@@ -450,7 +478,7 @@ export class AdminResource {
       bookedAt: string;
     }[]
   > {
-    return this.http.get('/admin/dashboard/recent-bookings');
+    return this.http.get('/admin/dashboard/recent-bookings', { params });
   }
 
   tourStats(): Promise<{ total: number; published: number; draft: number; locations: number }> {
@@ -458,10 +486,12 @@ export class AdminResource {
   }
 
   tours(
-    params: {
+    params: DateRangeParams & {
       search?: string;
       status?: string;
       location?: string;
+      minPriceMinor?: number;
+      maxPriceMinor?: number;
       page?: number;
       limit?: number;
     } = {},
@@ -480,10 +510,13 @@ export class AdminResource {
   }
 
   bookings(
-    params: {
+    params: DateRangeParams & {
       search?: string;
       status?: string;
       paymentStatus?: string;
+      tourId?: string;
+      minAmountMinor?: number;
+      maxAmountMinor?: number;
       page?: number;
       limit?: number;
     } = {},
@@ -500,7 +533,7 @@ export class AdminResource {
   }
 
   blogs(
-    params: {
+    params: DateRangeParams & {
       search?: string;
       status?: string;
       category?: string;
@@ -520,7 +553,15 @@ export class AdminResource {
     return this.http.get('/admin/payments/stats');
   }
 
-  payments(params: { page?: number; limit?: number } = {}): Promise<Paginated<AdminPayment>> {
+  payments(
+    params: DateRangeParams & {
+      search?: string;
+      status?: string;
+      method?: string;
+      page?: number;
+      limit?: number;
+    } = {},
+  ): Promise<Paginated<AdminPayment>> {
     return this.http.getPaginated<AdminPayment>('/admin/payments', { params });
   }
 
@@ -586,14 +627,33 @@ export class AdminResource {
 
   /** The bookings table as CSV, narrowed by the same filters. */
   exportBookings(
-    params: {
+    params: DateRangeParams & {
       search?: string;
       status?: string;
-      from?: string;
-      to?: string;
+      paymentStatus?: string;
+      tourId?: string;
+      minAmountMinor?: number;
+      maxAmountMinor?: number;
     } = {},
   ): Promise<Blob> {
     return this.http.download('/admin/bookings/export', { params });
+  }
+
+  /**
+   * Corrects a manually-recorded payment — cash, bank transfer, a card taken by
+   * phone. The API rejects this for anything Stripe captured; that record is the
+   * processor's, and `payment.isManual` says which kind you are looking at.
+   */
+  updatePayment(
+    paymentId: string,
+    payload: {
+      method?: string;
+      transactionId?: string;
+      amountMinor?: number;
+      paidAt?: string;
+    },
+  ): Promise<{ message: string }> {
+    return this.http.patch<{ message: string }>(`/admin/payments/${paymentId}`, payload);
   }
 
   /** Adds a departure to an existing booking, claiming its seats. */

@@ -10,11 +10,51 @@ import type {
   AdminBookingDto,
   AdminPaymentDto,
   AdminTourDto,
+  DashboardRangeQueryDto,
   DashboardStatsDto,
   ListAdminBlogsQueryDto,
   ListAdminBookingsQueryDto,
+  ListAdminPaymentsQueryDto,
   ListAdminToursQueryDto,
+  TopTourDto,
 } from './dto/admin.dto';
+
+/** Start of the given UTC day, or undefined when the caller left it open. */
+function startOfDay(date?: string): Date | undefined {
+  return date ? new Date(`${date.slice(0, 10)}T00:00:00.000Z`) : undefined;
+}
+
+/**
+ * End of the given UTC day. The bound is exclusive-by-a-millisecond rather than
+ * the next midnight so `lte` includes everything booked on the closing day.
+ */
+function endOfDay(date?: string): Date | undefined {
+  return date ? new Date(`${date.slice(0, 10)}T23:59:59.999Z`) : undefined;
+}
+
+/**
+ * A Prisma date filter for a `from`/`to` pair, or undefined when neither bound
+ * was given — an empty `{}` would still narrow nothing but reads as a filter.
+ */
+function dateRangeFilter(from?: string, to?: string): { gte?: Date; lte?: Date } | undefined {
+  const gte = startOfDay(from);
+  const lte = endOfDay(to);
+  if (!gte && !lte) return undefined;
+  return { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) };
+}
+
+/**
+ * The same thing, ready to spread into a `where`: `{}` when the range is open,
+ * so callers do not have to test the range and then build it a second time.
+ */
+function dateRangeOn<TField extends string>(
+  field: TField,
+  from?: string,
+  to?: string,
+): Partial<Record<TField, { gte?: Date; lte?: Date }>> {
+  const range = dateRangeFilter(from, to);
+  return range ? ({ [field]: range } as Record<TField, typeof range>) : {};
+}
 
 @Injectable()
 export class AdminService {
@@ -22,17 +62,27 @@ export class AdminService {
 
   // --- dashboard -------------------------------------------------------------
 
-  async dashboardStats(): Promise<DashboardStatsDto> {
+  /**
+   * Every figure on the dashboard honours the header's date range.
+   *
+   * Two of them deliberately do not: Active Tours and Total Customers are
+   * "how much do we have right now" counts, not activity in a window, so a
+   * narrower range must not make the catalogue look smaller.
+   */
+  async dashboardStats(range: DashboardRangeQueryDto = {}): Promise<DashboardStatsDto> {
+    const bookedAt = dateRangeFilter(range.from, range.to);
+    const inRange = { deletedAt: null, ...(bookedAt ? { bookedAt } : {}) };
+
     const [totalBookings, revenue, totalCustomers, activeTours, pendingPayments] =
       await Promise.all([
-        this.prisma.booking.count({ where: { deletedAt: null } }),
+        this.prisma.booking.count({ where: inRange }),
         this.prisma.booking.aggregate({
-          where: { paymentStatus: 'PAID', deletedAt: null },
+          where: { ...inRange, paymentStatus: 'PAID' },
           _sum: { total: true },
         }),
         this.prisma.customer.count(),
         this.prisma.tour.count({ where: { status: 'PUBLISHED', deletedAt: null } }),
-        this.prisma.booking.count({ where: { paymentStatus: 'PENDING', deletedAt: null } }),
+        this.prisma.booking.count({ where: { ...inRange, paymentStatus: 'PENDING' } }),
       ]);
 
     return {
@@ -44,35 +94,69 @@ export class AdminService {
     };
   }
 
-  /** Bookings per day for the overview chart. */
-  async bookingsSeries(days = 7): Promise<{ day: string; bookings: number }[]> {
+  /**
+   * Bookings per day for the overview chart.
+   *
+   * Days with no bookings are emitted as zero rather than omitted: a gap in the
+   * result set would make the line jump straight from one busy day to the next
+   * and read as though the quiet day never existed.
+   */
+  async bookingsSeries(
+    range: DashboardRangeQueryDto = {},
+  ): Promise<{ day: string; bookings: number }[]> {
+    const to = endOfDay(range.to) ?? new Date();
+    const from =
+      startOfDay(range.from) ??
+      new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate() - 6));
+
     const rows = await this.prisma.$queryRaw<{ day: Date; count: bigint }[]>`
       SELECT date_trunc('day', "bookedAt") AS day, COUNT(*) AS count
       FROM "bookings"
       WHERE "deletedAt" IS NULL
-        AND "bookedAt" >= NOW() - (${days} || ' days')::interval
+        AND "bookedAt" >= ${from}
+        AND "bookedAt" <= ${to}
       GROUP BY 1
       ORDER BY 1 ASC
     `;
 
-    return rows.map((row) => ({
-      day: new Intl.DateTimeFormat('en-US', {
-        month: 'short',
-        day: 'numeric',
-        timeZone: 'UTC',
-      }).format(row.day),
-      bookings: Number(row.count),
-    }));
+    const counts = new Map(
+      rows.map((row) => [row.day.toISOString().slice(0, 10), Number(row.count)]),
+    );
+
+    const format = new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC',
+    });
+
+    // A very wide range would produce an unreadable axis, so the series is
+    // capped at a quarter's worth of days.
+    const MAX_DAYS = 92;
+    const series: { day: string; bookings: number }[] = [];
+    const cursor = new Date(from);
+
+    while (cursor <= to && series.length < MAX_DAYS) {
+      const key = cursor.toISOString().slice(0, 10);
+      series.push({ day: format.format(cursor), bookings: counts.get(key) ?? 0 });
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+
+    return series;
   }
 
-  async statusBreakdown(): Promise<{ name: string; value: number }[]> {
+  async statusBreakdown(
+    range: DashboardRangeQueryDto = {},
+  ): Promise<{ name: string; value: number }[]> {
+    const bookedAt = dateRangeFilter(range.from, range.to);
+    const inRange = { deletedAt: null, ...(bookedAt ? { bookedAt } : {}) };
+
     const [byStatus, refunded] = await Promise.all([
       this.prisma.booking.groupBy({
         by: ['status'],
-        where: { deletedAt: null },
+        where: inRange,
         _count: { _all: true },
       }),
-      this.prisma.booking.count({ where: { paymentStatus: 'REFUNDED', deletedAt: null } }),
+      this.prisma.booking.count({ where: { ...inRange, paymentStatus: 'REFUNDED' } }),
     ]);
 
     const countOf = (status: string) =>
@@ -86,20 +170,60 @@ export class AdminService {
     ];
   }
 
-  async topTours(limit = 5): Promise<{ title: string; bookings: number }[]> {
+  /**
+   * The most-booked tours in the range.
+   *
+   * Grouped by `tourId` rather than the denormalised title so renaming a tour
+   * does not split its history into two entries. Cancelled and soft-deleted
+   * bookings are excluded — a leaderboard that counted cancellations would rank
+   * a tour nobody actually went on.
+   */
+  async topTours(range: DashboardRangeQueryDto = {}, limit = 5): Promise<TopTourDto[]> {
+    const bookedAt = dateRangeFilter(range.from, range.to);
+
     const rows = await this.prisma.bookingItem.groupBy({
-      by: ['tourTitle'],
+      by: ['tourId'],
+      where: {
+        booking: {
+          deletedAt: null,
+          status: { not: 'CANCELLED' },
+          ...(bookedAt ? { bookedAt } : {}),
+        },
+      },
       _count: { _all: true },
-      orderBy: { _count: { tourTitle: 'desc' } },
+      orderBy: { _count: { tourId: 'desc' } },
       take: limit,
     });
 
-    return rows.map((row) => ({ title: row.tourTitle, bookings: row._count._all }));
+    if (rows.length === 0) return [];
+
+    const tours = await this.prisma.tour.findMany({
+      where: { id: { in: rows.map((row) => row.tourId) } },
+      select: {
+        id: true,
+        title: true,
+        images: { where: { isCover: true }, take: 1, select: { url: true } },
+      },
+    });
+
+    const byId = new Map(tours.map((tour) => [tour.id, tour]));
+
+    return rows.map((row) => {
+      const tour = byId.get(row.tourId);
+      return {
+        id: row.tourId,
+        title: tour?.title ?? 'Deleted tour',
+        bookings: row._count._all,
+        coverImage: tour?.images[0]?.url ?? null,
+      };
+    });
   }
 
-  async recentBookings(limit = 5) {
+  async recentBookings(range: DashboardRangeQueryDto = {}, limit = 5) {
+    const bookedAt = dateRangeFilter(range.from, range.to);
+
     const rows = await this.prisma.booking.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, ...(bookedAt ? { bookedAt } : {}) },
       orderBy: { bookedAt: 'desc' },
       take: limit,
       include: { customer: { select: { fullName: true } } },
@@ -149,6 +273,17 @@ export class AdminService {
         : {}),
       ...(query.status && query.status !== 'ALL' ? { status: query.status } : {}),
       ...(query.location ? { location: { name: query.location } } : {}),
+      // Advanced filters. The price bounds read the USD column because that is
+      // the one the table shows, so the filter matches the visible figures.
+      ...(query.minPriceMinor !== undefined || query.maxPriceMinor !== undefined
+        ? {
+            priceAdultUsd: {
+              ...(query.minPriceMinor !== undefined ? { gte: query.minPriceMinor } : {}),
+              ...(query.maxPriceMinor !== undefined ? { lte: query.maxPriceMinor } : {}),
+            },
+          }
+        : {}),
+      ...dateRangeOn('updatedAt', query.from, query.to),
     };
 
     const [rows, total] = await Promise.all([
@@ -328,6 +463,18 @@ export class AdminService {
       ...(query.paymentStatus && query.paymentStatus !== 'ALL'
         ? { paymentStatus: query.paymentStatus }
         : {}),
+      // The Tours filter matches bookings that contain the tour, not bookings
+      // made up solely of it — a two-tour booking should appear under both.
+      ...(query.tourId ? { items: { some: { tourId: query.tourId } } } : {}),
+      ...(query.minAmountMinor !== undefined || query.maxAmountMinor !== undefined
+        ? {
+            total: {
+              ...(query.minAmountMinor !== undefined ? { gte: query.minAmountMinor } : {}),
+              ...(query.maxAmountMinor !== undefined ? { lte: query.maxAmountMinor } : {}),
+            },
+          }
+        : {}),
+      ...dateRangeOn('bookedAt', query.from, query.to),
     };
 
     const [rows, total] = await Promise.all([
@@ -366,7 +513,21 @@ export class AdminService {
       where: { reference, deletedAt: null },
       include: {
         customer: true,
-        items: { include: { tickets: true } },
+        items: {
+          include: {
+            tickets: true,
+            // For the thumbnail and location line only. Title and price stay
+            // denormalised on the item so a historic booking still reads right.
+            // `location.name` already reads "Rome, Italy" — the country column
+            // is not appended, or it renders as "Florence, Italy, Italy".
+            tour: {
+              select: {
+                location: { select: { name: true } },
+                images: { where: { isCover: true }, take: 1, select: { url: true } },
+              },
+            },
+          },
+        },
         payments: { orderBy: { createdAt: 'desc' } },
         notes: { orderBy: { createdAt: 'desc' } },
       },
@@ -393,7 +554,10 @@ export class AdminService {
       },
       items: booking.items.map((item) => ({
         id: item.id,
+        tourId: item.tourId,
         title: item.tourTitle,
+        location: item.tour.location.name,
+        coverImage: item.tour.images[0]?.url ?? null,
         date: item.date.toISOString().slice(0, 10),
         time: item.time,
         quantity: item.quantity,
@@ -403,11 +567,15 @@ export class AdminService {
       })),
       payment: payment
         ? {
+            id: payment.id,
             method: payment.method,
             status: payment.status,
             transactionId: payment.transactionId,
             amountMinor: payment.amount,
             paidAt: payment.paidAt?.toISOString() ?? null,
+            // A Stripe-backed record is owned by the processor and stays
+            // read-only in the admin panel.
+            isManual: payment.providerIntentId === null,
           }
         : null,
       notes: booking.notes.map((note) => ({
@@ -447,6 +615,9 @@ export class AdminService {
         : {}),
       ...(query.status && query.status !== 'ALL' ? { status: query.status } : {}),
       ...(query.category ? { categories: { some: { category: { name: query.category } } } } : {}),
+      // The range applies to the publish date, which is the column the screen
+      // shows; drafts have none, so they fall out of a ranged search.
+      ...dateRangeOn('publishedAt', query.from, query.to),
     };
 
     const [rows, total] = await Promise.all([
@@ -467,6 +638,7 @@ export class AdminService {
         slug: row.slug,
         // No excerpt column exists — the teaser comes from the body.
         excerpt: row.content.split('\n\n')[0]?.slice(0, 140) ?? '',
+        coverImage: row.coverImage,
         categories: row.categories.map((link) => link.category.name),
         status: row.status,
         publishedAt: row.publishedAt?.toISOString() ?? null,
@@ -497,24 +669,51 @@ export class AdminService {
     };
   }
 
+  /**
+   * Every payment, narrowed server-side.
+   *
+   * Search, status and method used to be applied in the browser to whichever
+   * page happened to be loaded, so searching for a transaction that lived on
+   * page 5 returned nothing at all.
+   */
   async listPayments(
-    page = 1,
-    limit = 10,
+    query: ListAdminPaymentsQueryDto,
   ): Promise<{ data: AdminPaymentDto[]; meta: PaginationMeta }> {
-    const pagination = normalizePagination({ page, limit });
+    const { page, limit, skip, take } = normalizePagination(query);
+
+    const where: Prisma.PaymentWhereInput = {
+      ...(query.search
+        ? {
+            OR: [
+              { transactionId: { contains: query.search, mode: 'insensitive' } },
+              { booking: { reference: { contains: query.search, mode: 'insensitive' } } },
+              {
+                booking: {
+                  customer: { fullName: { contains: query.search, mode: 'insensitive' } },
+                },
+              },
+            ],
+          }
+        : {}),
+      ...(query.status && query.status !== 'ALL' ? { status: query.status } : {}),
+      ...(query.method && query.method !== 'ALL' ? { method: query.method } : {}),
+      // Ranged on the capture date, which is the column the table shows.
+      ...dateRangeOn('paidAt', query.from, query.to),
+    };
 
     const [rows, total] = await Promise.all([
       this.prisma.payment.findMany({
+        where,
         orderBy: { createdAt: 'desc' },
-        skip: pagination.skip,
-        take: pagination.take,
+        skip,
+        take,
         include: {
           booking: {
             select: { reference: true, customer: { select: { fullName: true } } },
           },
         },
       }),
-      this.prisma.payment.count(),
+      this.prisma.payment.count({ where }),
     ]);
 
     return {
@@ -530,7 +729,7 @@ export class AdminService {
         status: row.status,
         paidAt: row.paidAt?.toISOString() ?? null,
       })),
-      meta: buildPaginationMeta(total, pagination.page, pagination.limit),
+      meta: buildPaginationMeta(total, page, limit),
     };
   }
 }

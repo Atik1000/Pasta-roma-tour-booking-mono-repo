@@ -12,6 +12,7 @@ import type {
   SaveTourDto,
   SaveTourImagesDto,
   UpdateBookingDto,
+  UpdatePaymentDto,
   UpsertNoteDto,
 } from './dto/admin-write.dto';
 
@@ -520,5 +521,87 @@ export class AdminWriteService {
     await this.prisma.bookingNote.create({
       data: { bookingId: booking.id, authorId, body: dto.body.trim() },
     });
+  }
+
+  // --- payments --------------------------------------------------------------
+
+  /**
+   * Corrects a manually-recorded payment.
+   *
+   * Refuses anything Stripe owns. That record is written by the webhook, and
+   * letting an operator retype the captured amount would make invoices, CSV
+   * exports and the revenue figures all claim money that never moved — with no
+   * way afterwards to tell which number was the real one.
+   *
+   * The booking's payment status is recomputed from the amount rather than sent
+   * by the client, so a part-payment cannot be filed as settled in full. Every
+   * change is written to the activity log with the previous values.
+   */
+  async updatePayment(paymentId: string, dto: UpdatePaymentDto, actorId: string): Promise<void> {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: { booking: { select: { id: true, total: true, reference: true } } },
+    });
+
+    if (!payment) throw new NotFoundException('That payment could not be found.');
+
+    if (payment.providerIntentId !== null) {
+      throw new BusinessException(
+        BusinessErrorCode.PaymentAlreadyCaptured,
+        'This payment was captured by Stripe and is its record to keep. Use Refund to return money, or add a booking note to explain a discrepancy.',
+      );
+    }
+
+    const amountMinor = dto.amountMinor ?? payment.amount;
+    const paidAt = dto.paidAt ? new Date(dto.paidAt) : payment.paidAt;
+
+    // Derived, never taken from the client: an amount short of the booking total
+    // is still outstanding no matter what the form said.
+    const status =
+      amountMinor <= 0 ? 'PENDING' : amountMinor >= payment.booking.total ? 'PAID' : 'PENDING';
+
+    await this.prisma.$transaction([
+      this.prisma.payment.update({
+        where: { id: paymentId },
+        data: {
+          ...(dto.method !== undefined ? { method: dto.method } : {}),
+          ...(dto.transactionId !== undefined
+            ? { transactionId: dto.transactionId.trim() || null }
+            : {}),
+          amount: amountMinor,
+          paidAt: status === 'PAID' ? (paidAt ?? new Date()) : null,
+          status,
+        },
+      }),
+      this.prisma.booking.update({
+        where: { id: payment.booking.id },
+        data: { paymentStatus: status },
+      }),
+      this.prisma.activityLog.create({
+        data: {
+          actorId,
+          action: 'payment.updated',
+          entity: 'Payment',
+          entityId: paymentId,
+          metadata: {
+            bookingReference: payment.booking.reference,
+            before: {
+              method: payment.method,
+              transactionId: payment.transactionId,
+              amountMinor: payment.amount,
+              paidAt: payment.paidAt?.toISOString() ?? null,
+              status: payment.status,
+            },
+            after: {
+              method: dto.method ?? payment.method,
+              transactionId: dto.transactionId ?? payment.transactionId,
+              amountMinor,
+              paidAt: status === 'PAID' ? (paidAt ?? new Date()).toISOString() : null,
+              status,
+            },
+          },
+        },
+      }),
+    ]);
   }
 }

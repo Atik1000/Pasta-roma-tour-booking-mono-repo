@@ -9,14 +9,17 @@ import {
   Card,
   CardContent,
   DataTable,
+  FilterPanel,
+  FilterRange,
   Input,
-  Pagination,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
   StatusPill,
+  TableFooter,
+  Thumbnail,
   type ColumnDef,
   useToast,
 } from '@pasta/ui';
@@ -28,22 +31,48 @@ import type { AdminBlog } from '@pasta/api-client';
 
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
 import { env } from '@/lib/env';
+import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { adminApi } from '@/lib/session';
+
+/** The advanced filters behind the Filters button. */
+interface Advanced {
+  from: string;
+  to: string;
+}
+
+const NO_ADVANCED: Advanced = { from: '', to: '' };
 
 export function BlogsTable({ categories }: { categories: string[] }) {
   const [search, setSearch] = React.useState('');
   const [category, setCategory] = React.useState('ALL');
   const [status, setStatus] = React.useState('ALL');
+  const [advanced, setAdvanced] = React.useState<Advanced>(NO_ADVANCED);
   const [page, setPage] = React.useState(1);
-  const perPage = 10;
+  const [perPage, setPerPage] = React.useState(10);
+
+  const debouncedSearch = useDebouncedValue(search, 300);
+
+  /**
+   * Any narrowing change returns to page 1. Category and Status used to leave
+   * the page alone, so switching them while on page 3 of a 4-page list often
+   * landed on an empty page that looked like "no posts match".
+   */
+  function narrow(apply: () => void) {
+    apply();
+    setPage(1);
+  }
+
+  const activeAdvanced = Object.values(advanced).filter((entry) => entry !== '').length;
 
   const query = useQuery({
-    queryKey: ['admin', 'blogs', { search, category, status, page }],
+    queryKey: ['admin', 'blogs', { debouncedSearch, category, status, advanced, page, perPage }],
     queryFn: () =>
       adminApi.admin.blogs({
-        search: search.trim() || undefined,
+        search: debouncedSearch.trim() || undefined,
         category: category === 'ALL' ? undefined : category,
         status,
+        from: advanced.from || undefined,
+        to: advanced.to || undefined,
         page,
         limit: perPage,
       }),
@@ -73,10 +102,10 @@ export function BlogsTable({ categories }: { categories: string[] }) {
         header: 'Blog',
         cell: ({ row }) => (
           <div className="flex items-center gap-3">
-            <span
-              role="img"
-              aria-label={row.original.title}
-              className="rounded-field h-12 w-16 shrink-0 bg-[linear-gradient(140deg,#f3ddb8,#e3b76f_55%,#b5751f)]"
+            <Thumbnail
+              src={row.original.coverImage}
+              alt={row.original.title}
+              className="h-12 w-16"
             />
             <span className="min-w-0">
               <span className="block font-medium">{row.original.title}</span>
@@ -154,12 +183,12 @@ export function BlogsTable({ categories }: { categories: string[] }) {
     [],
   );
 
-  const hasFilters = search !== '' || category !== 'ALL' || status !== 'ALL';
+  const hasFilters = search !== '' || category !== 'ALL' || status !== 'ALL' || activeAdvanced > 0;
 
   return (
     <div className="flex flex-col gap-6">
       <Card>
-        <CardContent className="grid gap-3 p-4 lg:grid-cols-[1fr_13rem_13rem_auto]">
+        <CardContent className="grid gap-3 p-4 lg:grid-cols-[1fr_13rem_13rem_auto_auto]">
           <div>
             <label htmlFor="blog-search" className="sr-only">
               Search blogs
@@ -168,10 +197,7 @@ export function BlogsTable({ categories }: { categories: string[] }) {
               id="blog-search"
               type="search"
               value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                setPage(1);
-              }}
+              onChange={(event) => narrow(() => setSearch(event.target.value))}
               placeholder="Search by blog title or slug..."
               leadingIcon={<Search aria-hidden />}
             />
@@ -181,7 +207,7 @@ export function BlogsTable({ categories }: { categories: string[] }) {
             <label htmlFor="blog-category" className="text-muted-foreground text-xs">
               Category
             </label>
-            <Select value={category} onValueChange={setCategory}>
+            <Select value={category} onValueChange={(next) => narrow(() => setCategory(next))}>
               <SelectTrigger id="blog-category" className="h-10">
                 <SelectValue />
               </SelectTrigger>
@@ -200,7 +226,7 @@ export function BlogsTable({ categories }: { categories: string[] }) {
             <label htmlFor="blog-status" className="text-muted-foreground text-xs">
               Status
             </label>
-            <Select value={status} onValueChange={setStatus}>
+            <Select value={status} onValueChange={(next) => narrow(() => setStatus(next))}>
               <SelectTrigger id="blog-status" className="h-10">
                 <SelectValue />
               </SelectTrigger>
@@ -212,16 +238,46 @@ export function BlogsTable({ categories }: { categories: string[] }) {
             </Select>
           </div>
 
+          <FilterPanel
+            activeCount={activeAdvanced}
+            onClear={() => narrow(() => setAdvanced(NO_ADVANCED))}
+          >
+            <FilterRange legend="Published between">
+              <Input
+                type="date"
+                aria-label="Published on or after"
+                value={advanced.from}
+                onChange={(event) =>
+                  narrow(() => setAdvanced({ ...advanced, from: event.target.value }))
+                }
+              />
+              <Input
+                type="date"
+                aria-label="Published on or before"
+                value={advanced.to}
+                onChange={(event) =>
+                  narrow(() => setAdvanced({ ...advanced, to: event.target.value }))
+                }
+              />
+            </FilterRange>
+            <p className="text-muted-foreground text-xs">
+              Drafts have no publish date, so a date range excludes them.
+            </p>
+          </FilterPanel>
+
           <Button
             variant="ghost"
             className="self-end"
             leadingIcon={<RotateCcw aria-hidden />}
             disabled={!hasFilters}
-            onClick={() => {
-              setSearch('');
-              setCategory('ALL');
-              setStatus('ALL');
-            }}
+            onClick={() =>
+              narrow(() => {
+                setSearch('');
+                setCategory('ALL');
+                setStatus('ALL');
+                setAdvanced(NO_ADVANCED);
+              })
+            }
           >
             Reset
           </Button>
@@ -236,16 +292,15 @@ export function BlogsTable({ categories }: { categories: string[] }) {
         emptyDescription="Adjust the search or reset the filters to see every post."
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <p className="text-muted-foreground text-sm">
-          Showing {rows.length} of {total} entries
-        </p>
-        <Pagination
-          page={page}
-          totalPages={Math.max(1, Math.ceil(total / perPage))}
-          onPageChange={setPage}
-        />
-      </div>
+      <TableFooter
+        page={page}
+        perPage={perPage}
+        rowCount={rows.length}
+        total={total}
+        noun="entries"
+        onPageChange={setPage}
+        onPerPageChange={(next) => narrow(() => setPerPage(next))}
+      />
 
       <ConfirmDialog
         open={pendingDelete !== null}

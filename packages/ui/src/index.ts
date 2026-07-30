@@ -20,6 +20,7 @@ export {
 } from './components/card';
 export { Skeleton } from './components/skeleton';
 export { Spinner, type SpinnerProps } from './components/spinner';
+export { Thumbnail, type ThumbnailProps } from './components/thumbnail';
 
 // --- forms --------------------------------------------------------------------
 export { Input, Textarea, type InputProps } from './components/input';
@@ -95,6 +96,17 @@ export {
 } from './components/data-table';
 export { Breadcrumb, type BreadcrumbItem } from './components/breadcrumb';
 export { Pagination, type PaginationProps } from './components/pagination';
+export {
+  ROWS_PER_PAGE_OPTIONS,
+  TableFooter,
+  type TableFooterProps,
+} from './components/table-footer';
+export {
+  FilterPanel,
+  FilterRange,
+  type FilterPanelProps,
+  type FilterRangeProps,
+} from './components/filter-panel';
 
 // --- states -------------------------------------------------------------------
 export {

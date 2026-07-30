@@ -13,14 +13,16 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  FilterPanel,
+  FilterRange,
   Input,
-  Pagination,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
   StatusPill,
+  TableFooter,
   type ColumnDef,
   useToast,
 } from '@pasta/ui';
@@ -32,12 +34,52 @@ import { isApiClientError, type AdminBooking } from '@pasta/api-client';
 
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
 import { printBlob, saveBlob } from '@/lib/download';
+import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { adminApi } from '@/lib/session';
 
 export interface BookingFilters {
   search: string;
   status: string;
   payment: string;
+  /** Tour id, or 'ALL'. The design's third select. */
+  tour: string;
+  /** Advanced: booked-on range and booking-total bounds, as typed. */
+  from: string;
+  to: string;
+  minAmount: string;
+  maxAmount: string;
+}
+
+export const NO_BOOKING_FILTERS: BookingFilters = {
+  search: '',
+  status: 'ALL',
+  payment: 'ALL',
+  tour: 'ALL',
+  from: '',
+  to: '',
+  minAmount: '',
+  maxAmount: '',
+};
+
+/** Major units as typed, to the minor units the API stores. */
+function toMinor(value: string): number | undefined {
+  if (value.trim() === '') return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) : undefined;
+}
+
+/** The request shape shared by the table query and the CSV export. */
+export function bookingQueryParams(filters: BookingFilters) {
+  return {
+    search: filters.search.trim() || undefined,
+    status: filters.status,
+    paymentStatus: filters.payment,
+    tourId: filters.tour === 'ALL' ? undefined : filters.tour,
+    from: filters.from || undefined,
+    to: filters.to || undefined,
+    minAmountMinor: toMinor(filters.minAmount),
+    maxAmountMinor: toMinor(filters.maxAmount),
+  };
 }
 
 /**
@@ -48,18 +90,34 @@ export interface BookingFilters {
 export function BookingsTable({
   filters,
   onFiltersChange,
+  tours,
 }: {
   filters: BookingFilters;
   onFiltersChange: (next: BookingFilters) => void;
+  /** Every tour, for the Tours select. */
+  tours: { id: string; title: string }[];
 }) {
-  const { search, status, payment } = filters;
-  const setSearch = (next: string) => onFiltersChange({ ...filters, search: next });
-  const setStatus = (next: string) => onFiltersChange({ ...filters, status: next });
-  const setPayment = (next: string) => onFiltersChange({ ...filters, payment: next });
+  const { search, status, payment, tour } = filters;
   const [page, setPage] = React.useState(1);
+  const [perPage, setPerPage] = React.useState(10);
   const [busyRow, setBusyRow] = React.useState<string | null>(null);
   const [pendingCancel, setPendingCancel] = React.useState<AdminBooking | null>(null);
-  const perPage = 10;
+
+  const debouncedSearch = useDebouncedValue(search, 300);
+
+  /**
+   * Any narrowing change returns to page 1. The status and payment selects used
+   * to leave the page where it was, so changing them on page 12 of 19 showed an
+   * empty table that read as "no bookings match".
+   */
+  function narrow(changes: Partial<BookingFilters>) {
+    onFiltersChange({ ...filters, ...changes });
+    setPage(1);
+  }
+
+  const activeAdvanced = [filters.from, filters.to, filters.minAmount, filters.maxAmount].filter(
+    (entry) => entry !== '',
+  ).length;
 
   const toast = useToast();
 
@@ -125,12 +183,10 @@ export function BookingsTable({
   });
 
   const query = useQuery({
-    queryKey: ['admin', 'bookings', { search, status, payment, page }],
+    queryKey: ['admin', 'bookings', { ...filters, search: debouncedSearch, page, perPage }],
     queryFn: () =>
       adminApi.admin.bookings({
-        search: search.trim() || undefined,
-        status,
-        paymentStatus: payment,
+        ...bookingQueryParams({ ...filters, search: debouncedSearch }),
         page,
         limit: perPage,
       }),
@@ -274,12 +330,13 @@ export function BookingsTable({
     [busyRow],
   );
 
-  const hasFilters = search !== '' || status !== 'ALL' || payment !== 'ALL';
+  const hasFilters =
+    search !== '' || status !== 'ALL' || payment !== 'ALL' || tour !== 'ALL' || activeAdvanced > 0;
 
   return (
     <div className="flex flex-col gap-6">
       <Card>
-        <CardContent className="grid gap-3 p-4 xl:grid-cols-[1fr_12rem_13rem_auto]">
+        <CardContent className="grid gap-3 p-4 xl:grid-cols-[1fr_12rem_13rem_12rem_auto_auto]">
           <div>
             <label htmlFor="booking-search" className="sr-only">
               Search bookings
@@ -288,10 +345,7 @@ export function BookingsTable({
               id="booking-search"
               type="search"
               value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                setPage(1);
-              }}
+              onChange={(event) => narrow({ search: event.target.value })}
               placeholder="Search by booking ID, customer, or email..."
               leadingIcon={<Search aria-hidden />}
             />
@@ -301,7 +355,7 @@ export function BookingsTable({
             <label htmlFor="booking-status" className="text-muted-foreground text-xs">
               Booking Status
             </label>
-            <Select value={status} onValueChange={setStatus}>
+            <Select value={status} onValueChange={(next) => narrow({ status: next })}>
               <SelectTrigger id="booking-status" className="h-10">
                 <SelectValue />
               </SelectTrigger>
@@ -318,7 +372,7 @@ export function BookingsTable({
             <label htmlFor="payment-status" className="text-muted-foreground text-xs">
               Payment Status
             </label>
-            <Select value={payment} onValueChange={setPayment}>
+            <Select value={payment} onValueChange={(next) => narrow({ payment: next })}>
               <SelectTrigger id="payment-status" className="h-10">
                 <SelectValue />
               </SelectTrigger>
@@ -332,17 +386,74 @@ export function BookingsTable({
             </Select>
           </div>
 
+          {/* A booking with two tours appears under both — this asks "contains
+              this tour", not "is only this tour". */}
+          <div className="flex flex-col gap-1">
+            <label htmlFor="booking-tour" className="text-muted-foreground text-xs">
+              Tours
+            </label>
+            <Select value={tour} onValueChange={(next) => narrow({ tour: next })}>
+              <SelectTrigger id="booking-tour" className="h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All Tours</SelectItem>
+                {tours.map((entry) => (
+                  <SelectItem key={entry.id} value={entry.id}>
+                    {entry.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <FilterPanel
+            activeCount={activeAdvanced}
+            onClear={() => narrow({ from: '', to: '', minAmount: '', maxAmount: '' })}
+          >
+            <FilterRange legend="Booked between">
+              <Input
+                type="date"
+                aria-label="Booked on or after"
+                value={filters.from}
+                onChange={(event) => narrow({ from: event.target.value })}
+              />
+              <Input
+                type="date"
+                aria-label="Booked on or before"
+                value={filters.to}
+                onChange={(event) => narrow({ to: event.target.value })}
+              />
+            </FilterRange>
+
+            <FilterRange legend="Total amount">
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                placeholder="Min"
+                aria-label="Lowest booking total"
+                value={filters.minAmount}
+                onChange={(event) => narrow({ minAmount: event.target.value })}
+              />
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                placeholder="Max"
+                aria-label="Highest booking total"
+                value={filters.maxAmount}
+                onChange={(event) => narrow({ maxAmount: event.target.value })}
+              />
+            </FilterRange>
+          </FilterPanel>
+
           <Button
             variant="ghost"
             className="self-end"
             leadingIcon={<RotateCcw aria-hidden />}
             disabled={!hasFilters}
-            onClick={() => {
-              setSearch('');
-              setStatus('ALL');
-              setPayment('ALL');
-              setPage(1);
-            }}
+            onClick={() => narrow(NO_BOOKING_FILTERS)}
           >
             Reset
           </Button>
@@ -357,16 +468,18 @@ export function BookingsTable({
         emptyDescription="Adjust the search or reset the filters to see every booking."
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <p className="text-muted-foreground text-sm">
-          Showing {rows.length} of {total} bookings
-        </p>
-        <Pagination
-          page={page}
-          totalPages={Math.max(1, Math.ceil(total / perPage))}
-          onPageChange={setPage}
-        />
-      </div>
+      <TableFooter
+        page={page}
+        perPage={perPage}
+        rowCount={rows.length}
+        total={total}
+        noun="bookings"
+        onPageChange={setPage}
+        onPerPageChange={(next) => {
+          setPerPage(next);
+          setPage(1);
+        }}
+      />
 
       <ConfirmDialog
         open={Boolean(pendingCancel)}

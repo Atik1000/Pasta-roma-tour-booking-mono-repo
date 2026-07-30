@@ -1,14 +1,30 @@
 'use client';
 
+import * as React from 'react';
+
 import Link from 'next/link';
 
-import { Button, Card, CardContent, ErrorState, Skeleton, StatCard, StatusPill } from '@pasta/ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  EmptyState,
+  ErrorState,
+  Skeleton,
+  StatCard,
+  StatusPill,
+  Thumbnail,
+} from '@pasta/ui';
 import { formatMoney, formatTimestamp } from '@pasta/utils';
 import { useQuery } from '@tanstack/react-query';
 import { CreditCard, MapPinned, Ticket, TrendingUp, Trophy, Users } from 'lucide-react';
 
 import { DashboardCharts } from '@/components/dashboard/dashboard-charts';
-import { DateRangePicker } from '@/components/dashboard/date-range-picker';
+import {
+  DateRangePicker,
+  defaultRange,
+  type DashboardRange,
+} from '@/components/dashboard/date-range-picker';
 import { PageHeader } from '@/components/layout/admin-shell';
 import { adminApi } from '@/lib/session';
 
@@ -19,26 +35,46 @@ const CHART_COLORS = [
   'var(--color-chart-4)',
 ];
 
+/** `YYYY-MM-DD` for the day `days - 1` before `to`, so the window is inclusive. */
+function windowStart(to: string, days: number): string {
+  const date = new Date(`${to}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() - (days - 1));
+  return date.toISOString().slice(0, 10);
+}
+
 export default function DashboardPage() {
+  // The header's date range drives every figure on the screen.
+  const [range, setRange] = React.useState<DashboardRange>(defaultRange);
+
+  // The Bookings Overview chart has its own period select, independent of the
+  // header — the design shows both controls, and they do different jobs.
+  const [period, setPeriod] = React.useState('7');
+
+  const params = { from: range.from, to: range.to };
+
   const stats = useQuery({
-    queryKey: ['admin', 'dashboard', 'stats'],
-    queryFn: () => adminApi.admin.dashboardStats(),
+    queryKey: ['admin', 'dashboard', 'stats', params],
+    queryFn: () => adminApi.admin.dashboardStats(params),
   });
   const series = useQuery({
-    queryKey: ['admin', 'dashboard', 'series'],
-    queryFn: () => adminApi.admin.bookingsSeries(),
+    queryKey: ['admin', 'dashboard', 'series', { to: range.to, period }],
+    queryFn: () =>
+      adminApi.admin.bookingsSeries({
+        from: windowStart(range.to, Number(period)),
+        to: range.to,
+      }),
   });
   const breakdown = useQuery({
-    queryKey: ['admin', 'dashboard', 'breakdown'],
-    queryFn: () => adminApi.admin.statusBreakdown(),
+    queryKey: ['admin', 'dashboard', 'breakdown', params],
+    queryFn: () => adminApi.admin.statusBreakdown(params),
   });
   const topTours = useQuery({
-    queryKey: ['admin', 'dashboard', 'top-tours'],
-    queryFn: () => adminApi.admin.topTours(),
+    queryKey: ['admin', 'dashboard', 'top-tours', params],
+    queryFn: () => adminApi.admin.topTours(params),
   });
   const recent = useQuery({
-    queryKey: ['admin', 'dashboard', 'recent'],
-    queryFn: () => adminApi.admin.recentBookings(),
+    queryKey: ['admin', 'dashboard', 'recent', params],
+    queryFn: () => adminApi.admin.recentBookings(params),
   });
 
   if (stats.isError) {
@@ -87,7 +123,7 @@ export default function DashboardPage() {
       <PageHeader
         title="Dashboard"
         description="Welcome back! Here's what's happening with your business today."
-        actions={<DateRangePicker />}
+        actions={<DateRangePicker value={range} onChange={setRange} />}
       />
 
       <section aria-label="Key figures" className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
@@ -104,6 +140,8 @@ export default function DashboardPage() {
           ...slice,
           color: CHART_COLORS[index % CHART_COLORS.length],
         }))}
+        period={period}
+        onPeriodChange={setPeriod}
         isLoading={series.isLoading || breakdown.isLoading}
       />
 
@@ -126,22 +164,35 @@ export default function DashboardPage() {
                   <Skeleton key={index} className="h-12" />
                 ))}
               </div>
+            ) : (topTours.data ?? []).length === 0 ? (
+              <EmptyState
+                title="No bookings in this range"
+                description="Once tours are booked, the most popular appear here."
+              />
             ) : (
               <ol className="flex flex-col">
                 {(topTours.data ?? []).map((tour, index) => (
                   <li
-                    key={tour.title}
+                    key={tour.id ?? tour.title}
                     className="border-border flex items-center gap-4 border-b py-3 last:border-0"
                   >
                     <span className="text-muted-foreground w-4 shrink-0 text-sm tabular-nums">
                       {index + 1}
                     </span>
-                    <span
-                      role="img"
-                      aria-label={tour.title}
-                      className="rounded-field size-10 shrink-0 bg-[linear-gradient(140deg,#f3ddb8,#e3b76f_55%,#b5751f)]"
-                    />
-                    <span className="min-w-0 flex-1 truncate text-sm">{tour.title}</span>
+                    <Thumbnail src={tour.coverImage} alt={tour.title} className="size-10" />
+                    {/* A tour deleted since it was booked has no id to link to. */}
+                    {tour.id ? (
+                      <Link
+                        href={`/tours/${tour.id}`}
+                        className="hover:text-primary min-w-0 flex-1 truncate text-sm transition-colors"
+                      >
+                        {tour.title}
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground min-w-0 flex-1 truncate text-sm">
+                        {tour.title}
+                      </span>
+                    )}
                     <span className="text-muted-foreground shrink-0 text-sm tabular-nums">
                       {tour.bookings} bookings
                     </span>
@@ -167,6 +218,11 @@ export default function DashboardPage() {
                   <Skeleton key={index} className="h-10" />
                 ))}
               </div>
+            ) : (recent.data ?? []).length === 0 ? (
+              <EmptyState
+                title="No bookings in this range"
+                description="Widen the date range to see earlier bookings."
+              />
             ) : (
               <ul className="flex flex-col">
                 {(recent.data ?? []).map((booking) => (

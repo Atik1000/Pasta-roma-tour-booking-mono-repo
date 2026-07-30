@@ -15,14 +15,16 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  FilterPanel,
+  FilterRange,
   Input,
-  Pagination,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
   StatusPill,
+  TableFooter,
   type ColumnDef,
   useToast,
 } from '@pasta/ui';
@@ -32,16 +34,37 @@ import { ExternalLink, RotateCcw, Search, Undo2 } from 'lucide-react';
 
 import { isApiClientError, type AdminPayment } from '@pasta/api-client';
 
+import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { adminApi } from '@/lib/session';
+
+/** The advanced filters behind the Filters button. */
+interface Advanced {
+  from: string;
+  to: string;
+}
+
+const NO_ADVANCED: Advanced = { from: '', to: '' };
 
 export function PaymentsTable() {
   const [search, setSearch] = React.useState('');
   const [status, setStatus] = React.useState('ALL');
   const [method, setMethod] = React.useState('ALL');
+  const [advanced, setAdvanced] = React.useState<Advanced>(NO_ADVANCED);
   const [page, setPage] = React.useState(1);
+  const [perPage, setPerPage] = React.useState(10);
   const [refundTarget, setRefundTarget] = React.useState<AdminPayment | null>(null);
   const [refundError, setRefundError] = React.useState<string | null>(null);
   const [refundNotice, setRefundNotice] = React.useState<string | null>(null);
+
+  const debouncedSearch = useDebouncedValue(search, 300);
+
+  /** Any narrowing change returns to page 1. */
+  function narrow(apply: () => void) {
+    apply();
+    setPage(1);
+  }
+
+  const activeAdvanced = Object.values(advanced).filter((entry) => entry !== '').length;
 
   const toast = useToast();
 
@@ -72,29 +95,28 @@ export function PaymentsTable() {
       toast.error('Refund failed', message);
     },
   });
-  const perPage = 10;
-
+  /**
+   * Every filter is applied by the API.
+   *
+   * They used to be applied in the browser to whichever page happened to be
+   * loaded, so searching for a transaction that lived on page 5 found nothing
+   * and the row count contradicted the pager.
+   */
   const query = useQuery({
-    queryKey: ['admin', 'payments', { page }],
-    queryFn: () => adminApi.admin.payments({ page, limit: perPage }),
+    queryKey: ['admin', 'payments', { debouncedSearch, status, method, advanced, page, perPage }],
+    queryFn: () =>
+      adminApi.admin.payments({
+        search: debouncedSearch.trim() || undefined,
+        status,
+        method,
+        from: advanced.from || undefined,
+        to: advanced.to || undefined,
+        page,
+        limit: perPage,
+      }),
   });
 
-  // The payments endpoint pages server-side; status and method narrow the
-  // current page until those filters exist on the API.
-  const rows = React.useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return (query.data?.data ?? []).filter((payment) => {
-      const matchesTerm =
-        !term ||
-        (payment.transactionId ?? '').toLowerCase().includes(term) ||
-        payment.bookingReference.toLowerCase().includes(term) ||
-        payment.customerName.toLowerCase().includes(term);
-      const matchesStatus = status === 'ALL' || payment.status === status;
-      const matchesMethod = method === 'ALL' || payment.method === method;
-      return matchesTerm && matchesStatus && matchesMethod;
-    });
-  }, [query.data, search, status, method]);
-
+  const rows = query.data?.data ?? [];
   const total = query.data?.meta.total ?? 0;
 
   const columns = React.useMemo<ColumnDef<AdminPayment, unknown>[]>(
@@ -180,7 +202,7 @@ export function PaymentsTable() {
     [],
   );
 
-  const hasFilters = search !== '' || status !== 'ALL' || method !== 'ALL';
+  const hasFilters = search !== '' || status !== 'ALL' || method !== 'ALL' || activeAdvanced > 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -194,7 +216,7 @@ export function PaymentsTable() {
       ) : null}
 
       <Card>
-        <CardContent className="grid gap-3 p-4 lg:grid-cols-[1fr_13rem_13rem_auto]">
+        <CardContent className="grid gap-3 p-4 lg:grid-cols-[1fr_13rem_13rem_auto_auto]">
           <div>
             <label htmlFor="payment-search" className="sr-only">
               Search payments
@@ -203,7 +225,7 @@ export function PaymentsTable() {
               id="payment-search"
               type="search"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => narrow(() => setSearch(event.target.value))}
               placeholder="Search by transaction, booking, or customer..."
               leadingIcon={<Search aria-hidden />}
             />
@@ -213,7 +235,7 @@ export function PaymentsTable() {
             <label htmlFor="payment-status-filter" className="text-muted-foreground text-xs">
               Status
             </label>
-            <Select value={status} onValueChange={setStatus}>
+            <Select value={status} onValueChange={(next) => narrow(() => setStatus(next))}>
               <SelectTrigger id="payment-status-filter" className="h-10">
                 <SelectValue />
               </SelectTrigger>
@@ -231,7 +253,7 @@ export function PaymentsTable() {
             <label htmlFor="payment-method-filter" className="text-muted-foreground text-xs">
               Method
             </label>
-            <Select value={method} onValueChange={setMethod}>
+            <Select value={method} onValueChange={(next) => narrow(() => setMethod(next))}>
               <SelectTrigger id="payment-method-filter" className="h-10">
                 <SelectValue />
               </SelectTrigger>
@@ -244,16 +266,46 @@ export function PaymentsTable() {
             </Select>
           </div>
 
+          <FilterPanel
+            activeCount={activeAdvanced}
+            onClear={() => narrow(() => setAdvanced(NO_ADVANCED))}
+          >
+            <FilterRange legend="Captured between">
+              <Input
+                type="date"
+                aria-label="Paid on or after"
+                value={advanced.from}
+                onChange={(event) =>
+                  narrow(() => setAdvanced({ ...advanced, from: event.target.value }))
+                }
+              />
+              <Input
+                type="date"
+                aria-label="Paid on or before"
+                value={advanced.to}
+                onChange={(event) =>
+                  narrow(() => setAdvanced({ ...advanced, to: event.target.value }))
+                }
+              />
+            </FilterRange>
+            <p className="text-muted-foreground text-xs">
+              Pending and failed payments have no capture date, so a date range excludes them.
+            </p>
+          </FilterPanel>
+
           <Button
             variant="ghost"
             className="self-end"
             leadingIcon={<RotateCcw aria-hidden />}
             disabled={!hasFilters}
-            onClick={() => {
-              setSearch('');
-              setStatus('ALL');
-              setMethod('ALL');
-            }}
+            onClick={() =>
+              narrow(() => {
+                setSearch('');
+                setStatus('ALL');
+                setMethod('ALL');
+                setAdvanced(NO_ADVANCED);
+              })
+            }
           >
             Reset
           </Button>
@@ -268,16 +320,15 @@ export function PaymentsTable() {
         emptyDescription="Adjust the search or reset the filters to see every payment."
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <p className="text-muted-foreground text-sm">
-          Showing {rows.length} of {total} payments
-        </p>
-        <Pagination
-          page={page}
-          totalPages={Math.max(1, Math.ceil(total / perPage))}
-          onPageChange={setPage}
-        />
-      </div>
+      <TableFooter
+        page={page}
+        perPage={perPage}
+        rowCount={rows.length}
+        total={total}
+        noun="payments"
+        onPageChange={setPage}
+        onPerPageChange={(next) => narrow(() => setPerPage(next))}
+      />
 
       {/* Refunds are irreversible, so they are confirmed rather than one-click. */}
       <Dialog open={refundTarget !== null} onOpenChange={(open) => !open && setRefundTarget(null)}>

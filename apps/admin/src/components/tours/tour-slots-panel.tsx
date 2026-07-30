@@ -6,7 +6,7 @@ import { Button, Card, CardContent, Input, Skeleton, useToast } from '@pasta/ui'
 import { isApiClientError, type AdminSlot } from '@pasta/api-client';
 import { formatClockTime, formatDate } from '@pasta/utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Info, Plus, Trash2, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Info, Plus, Trash2, X } from 'lucide-react';
 
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
 import { adminApi } from '@/lib/session';
@@ -19,6 +19,13 @@ function today(): string {
     String(now.getMonth() + 1).padStart(2, '0'),
     String(now.getDate()).padStart(2, '0'),
   ].join('-');
+}
+
+/** The given day shifted by `days`, still as YYYY-MM-DD. */
+function shiftDay(day: string, days: number): string {
+  const date = new Date(`${day}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 /**
@@ -106,8 +113,13 @@ export function TourSlotsPanel({ tourId }: { tourId?: string }) {
   return (
     <Card>
       <CardContent className="p-6">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">Tour Ticket Availability (Time Slots)</h2>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Tour Ticket Availability (Time Slots)</h2>
+            <p className="text-muted-foreground mt-0.5 text-sm">
+              Manage available time slots for this tour.
+            </p>
+          </div>
           <Button
             type="button"
             size="sm"
@@ -125,9 +137,22 @@ export function TourSlotsPanel({ tourId }: { tourId?: string }) {
           </p>
         ) : (
           <>
-            <div className="mb-4 flex items-center gap-3">
-              <label htmlFor="slot-date" className="text-sm font-medium">
-                Date
+            {/* The design pairs the date with step arrows — checking a run of
+                consecutive days is the common case, and clicking through a date
+                picker for each one is slow. */}
+            <div className="mb-4 flex items-center gap-2">
+              <Button
+                type="button"
+                variant="subtle"
+                size="icon"
+                aria-label="Previous day"
+                onClick={() => setDate(shiftDay(date, -1))}
+              >
+                <ChevronLeft aria-hidden />
+              </Button>
+
+              <label htmlFor="slot-date" className="sr-only">
+                Departure date
               </label>
               <Input
                 id="slot-date"
@@ -136,6 +161,22 @@ export function TourSlotsPanel({ tourId }: { tourId?: string }) {
                 onChange={(event) => setDate(event.target.value || today())}
                 className="h-10 w-48"
               />
+
+              <Button
+                type="button"
+                variant="subtle"
+                size="icon"
+                aria-label="Next day"
+                onClick={() => setDate(shiftDay(date, 1))}
+              >
+                <ChevronRight aria-hidden />
+              </Button>
+
+              {date !== today() ? (
+                <Button type="button" variant="ghost" size="sm" onClick={() => setDate(today())}>
+                  Today
+                </Button>
+              ) : null}
             </div>
 
             {error ? (
@@ -295,7 +336,7 @@ export function TourSlotsPanel({ tourId }: { tourId?: string }) {
           <span>
             <strong className="block">Availability Rules</strong>
             Time is unique for each tour + date. You cannot add duplicate time slots for the same
-            date.
+            date, and tickets available cannot drop below the number already booked.
           </span>
         </p>
       </CardContent>

@@ -38,6 +38,7 @@ import {
   SaveTourImagesDto,
   UpdateBookingDto,
   UpdateBookingItemDto,
+  UpdatePaymentDto,
   UpsertNoteDto,
 } from './dto/admin-write.dto';
 import {
@@ -46,9 +47,11 @@ import {
   AdminBookingDto,
   AdminPaymentDto,
   AdminTourDto,
+  DashboardRangeQueryDto,
   DashboardStatsDto,
   ListAdminBlogsQueryDto,
   ListAdminBookingsQueryDto,
+  ListAdminPaymentsQueryDto,
   ListAdminToursQueryDto,
 } from './dto/admin.dto';
 
@@ -76,32 +79,32 @@ export class AdminController {
   @Get('dashboard/stats')
   @ApiOperation({ summary: 'Headline figures for the dashboard' })
   @ApiEnvelopeResponse(DashboardStatsDto)
-  stats(): Promise<DashboardStatsDto> {
-    return this.admin.dashboardStats();
+  stats(@Query() range: DashboardRangeQueryDto): Promise<DashboardStatsDto> {
+    return this.admin.dashboardStats(range);
   }
 
   @Get('dashboard/bookings-series')
   @ApiOperation({ summary: 'Bookings per day' })
-  series() {
-    return this.admin.bookingsSeries();
+  series(@Query() range: DashboardRangeQueryDto) {
+    return this.admin.bookingsSeries(range);
   }
 
   @Get('dashboard/status-breakdown')
   @ApiOperation({ summary: 'Bookings by status' })
-  breakdown() {
-    return this.admin.statusBreakdown();
+  breakdown(@Query() range: DashboardRangeQueryDto) {
+    return this.admin.statusBreakdown(range);
   }
 
   @Get('dashboard/top-tours')
   @ApiOperation({ summary: 'Most-booked tours' })
-  topTours() {
-    return this.admin.topTours();
+  topTours(@Query() range: DashboardRangeQueryDto) {
+    return this.admin.topTours(range);
   }
 
   @Get('dashboard/recent-bookings')
   @ApiOperation({ summary: 'Latest bookings' })
-  recent() {
-    return this.admin.recentBookings();
+  recent(@Query() range: DashboardRangeQueryDto) {
+    return this.admin.recentBookings(range);
   }
 
   // --- tours -----------------------------------------------------------------
@@ -167,16 +170,40 @@ export class AdminController {
   @ApiProduces('text/csv')
   @ApiQuery({ name: 'search', required: false })
   @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'paymentStatus', required: false })
+  @ApiQuery({ name: 'tourId', required: false })
+  @ApiQuery({ name: 'minAmountMinor', required: false })
+  @ApiQuery({ name: 'maxAmountMinor', required: false })
   @ApiQuery({ name: 'from', required: false, description: 'Booked on or after, YYYY-MM-DD.' })
   @ApiQuery({ name: 'to', required: false, description: 'Booked on or before, YYYY-MM-DD.' })
   async exportBookings(
     @Res({ passthrough: true }) response: Response,
     @Query('search') search?: string,
     @Query('status') status?: string,
+    @Query('paymentStatus') paymentStatus?: string,
+    @Query('tourId') tourId?: string,
+    @Query('minAmountMinor') minAmountMinor?: string,
+    @Query('maxAmountMinor') maxAmountMinor?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ): Promise<StreamableFile> {
-    const csv = await this.documents.bookingsCsv({ search, status, from, to });
+    /** A bound that is absent or unparseable narrows nothing. */
+    const bound = (raw?: string): number | undefined => {
+      if (raw === undefined || raw === '') return undefined;
+      const parsed = Number.parseInt(raw, 10);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    };
+
+    const csv = await this.documents.bookingsCsv({
+      search,
+      status,
+      paymentStatus,
+      tourId,
+      minAmountMinor: bound(minAmountMinor),
+      maxAmountMinor: bound(maxAmountMinor),
+      from,
+      to,
+    });
 
     response.setHeader('Content-Type', 'text/csv; charset=utf-8');
     response.setHeader('Content-Disposition', 'attachment; filename="bookings.csv"');
@@ -223,11 +250,8 @@ export class AdminController {
   @Get('payments')
   @ApiOperation({ summary: 'Every payment' })
   @ApiPaginatedResponse(AdminPaymentDto)
-  listPayments(@Query('page') page?: string, @Query('limit') limit?: string) {
-    return this.admin.listPayments(
-      Number.parseInt(page ?? '1', 10) || 1,
-      Number.parseInt(limit ?? '10', 10) || 10,
-    );
+  listPayments(@Query() query: ListAdminPaymentsQueryDto) {
+    return this.admin.listPayments(query);
   }
 
   // --- writes ----------------------------------------------------------------
@@ -370,6 +394,22 @@ export class AdminController {
   ) {
     await this.write.addNote(reference, dto, userId);
     return { message: 'Note added.' };
+  }
+
+  @Patch('payments/:id')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Correct a manually-recorded payment',
+    description:
+      'Only payments with no Stripe PaymentIntent behind them. A processor-captured payment is rejected — its record belongs to Stripe.',
+  })
+  async updatePayment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdatePaymentDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    await this.write.updatePayment(id, dto, userId);
+    return { message: 'Payment record updated.' };
   }
 }
 

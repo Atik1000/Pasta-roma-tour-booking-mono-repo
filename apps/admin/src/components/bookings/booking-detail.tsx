@@ -17,6 +17,7 @@ import {
   SelectValue,
   StatusPill,
   Textarea,
+  Thumbnail,
   useToast,
 } from '@pasta/ui';
 import { formatClockTime, formatDate, formatDateTime, formatMoney } from '@pasta/utils';
@@ -26,6 +27,7 @@ import {
   CalendarDays,
   Clock,
   Mail,
+  MapPin,
   MessageSquare,
   Download,
   Plus,
@@ -41,15 +43,10 @@ import { isApiClientError, type AdminBookingDetail } from '@pasta/api-client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { AddBookingItemDialog } from '@/components/bookings/add-booking-item-dialog';
+import { PaymentDetailsPanel } from '@/components/bookings/payment-details-panel';
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
 import { printBlob, saveBlob } from '@/lib/download';
 import { adminApi } from '@/lib/session';
-
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  CARD: 'Credit Card',
-  PAYPAL: 'PayPal',
-  APPLE_PAY: 'Apple Pay',
-};
 
 /**
  * Booking detail. Everything on this screen is editable — customer, ticket
@@ -392,13 +389,16 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
                   return (
                     <div key={item.id} className="rounded-card border-border border">
                       <div className="flex flex-wrap items-start gap-4 p-4">
-                        <span
-                          role="img"
-                          aria-label={item.title}
-                          className="rounded-field h-14 w-20 shrink-0 bg-[linear-gradient(140deg,#f3ddb8,#e3b76f_55%,#b5751f)]"
-                        />
+                        <Thumbnail src={item.coverImage} alt={item.title} className="h-14 w-20" />
                         <div className="min-w-0 flex-1">
-                          <h3 className="font-medium">{item.title}</h3>
+                          <h3 className="font-medium">
+                            <Link
+                              href={`/tours/${item.tourId}`}
+                              className="hover:text-primary transition-colors"
+                            >
+                              {item.title}
+                            </Link>
+                          </h3>
                           <ul className="text-muted-foreground mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
                             <li className="inline-flex items-center gap-1.5">
                               <CalendarDays className="size-4" aria-hidden />
@@ -408,10 +408,27 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
                               <Clock className="size-4" aria-hidden />
                               {formatClockTime(item.time)}
                             </li>
+                            <li className="inline-flex items-center gap-1.5">
+                              <MapPin className="size-4" aria-hidden />
+                              {item.location}
+                            </li>
                           </ul>
                         </div>
 
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-4">
+                          <dl className="text-right text-sm">
+                            <div className="flex gap-2">
+                              <dt className="text-muted-foreground">Tickets:</dt>
+                              <dd className="font-medium tabular-nums">{item.quantity}</dd>
+                            </div>
+                            <div className="flex gap-2">
+                              <dt className="text-muted-foreground">Amount:</dt>
+                              <dd className="font-medium tabular-nums">
+                                {formatMoney(item.amountMinor, booking.currency)}
+                              </dd>
+                            </div>
+                          </dl>
+
                           <Button
                             variant="subtle"
                             size="icon"
@@ -581,47 +598,12 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
                 Payment Details
               </h2>
 
-              {/*
-                Read-only on purpose. This is the record of what the payment
-                processor actually did; letting an operator type into it would
-                let the system claim money was captured that never was, and
-                nothing downstream — invoices, exports, the revenue figures —
-                could be trusted again. Refunds go through the Payments screen,
-                which asks Stripe and lets the webhook write the result back.
-              */}
               {booking.payment ? (
-                <dl className="flex flex-col gap-3 text-sm">
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-muted-foreground">Method</dt>
-                    <dd className="font-medium">
-                      {PAYMENT_METHOD_LABELS[booking.payment.method] ?? booking.payment.method}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-muted-foreground">Status</dt>
-                    <dd>
-                      <StatusPill status={booking.payment.status} />
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-muted-foreground">Amount</dt>
-                    <dd className="font-medium tabular-nums">
-                      {formatMoney(booking.payment.amountMinor, booking.currency)}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-muted-foreground">Paid on</dt>
-                    <dd className="font-medium">
-                      {booking.payment.paidAt ? formatDateTime(booking.payment.paidAt) : 'Not yet'}
-                    </dd>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <dt className="text-muted-foreground">Transaction</dt>
-                    <dd className="break-all font-mono text-xs">
-                      {booking.payment.transactionId ?? 'None recorded'}
-                    </dd>
-                  </div>
-                </dl>
+                <PaymentDetailsPanel
+                  payment={booking.payment}
+                  currency={booking.currency}
+                  onSaved={refresh}
+                />
               ) : (
                 <p className="text-muted-foreground rounded-field border-border border border-dashed p-5 text-center text-sm">
                   No payment has been taken for this booking yet.

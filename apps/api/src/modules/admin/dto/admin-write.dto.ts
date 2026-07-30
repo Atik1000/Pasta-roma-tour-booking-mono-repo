@@ -7,6 +7,7 @@ import {
   IsEmail,
   IsIn,
   IsInt,
+  IsISO8601,
   IsNumber,
   IsOptional,
   IsString,
@@ -307,4 +308,39 @@ export class UpdateBookingItemDto {
   @ValidateNested({ each: true })
   @Type(() => TicketHolderInputDto)
   holders?: TicketHolderInputDto[];
+}
+
+const MANUAL_PAYMENT_METHODS = ['CARD', 'PAYPAL', 'APPLE_PAY'] as const;
+
+/**
+ * Corrections to a manually-recorded payment.
+ *
+ * Only reaches payments with no Stripe PaymentIntent behind them — cash, bank
+ * transfer, a card taken over the phone. A processor-backed record is written by
+ * the webhook and must keep agreeing with what Stripe actually holds, so the
+ * service refuses to touch one.
+ */
+export class UpdatePaymentDto {
+  @ApiPropertyOptional({ enum: MANUAL_PAYMENT_METHODS })
+  @IsOptional()
+  @IsIn(MANUAL_PAYMENT_METHODS)
+  method?: 'CARD' | 'PAYPAL' | 'APPLE_PAY';
+
+  @ApiPropertyOptional({ description: 'Reference from the terminal, bank or receipt.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  transactionId?: string;
+
+  @ApiPropertyOptional({ description: 'Captured amount in minor units.' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  amountMinor?: number;
+
+  @ApiPropertyOptional({ description: 'When the money arrived, ISO 8601.' })
+  @IsOptional()
+  @IsISO8601()
+  paidAt?: string;
 }

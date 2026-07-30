@@ -24,7 +24,7 @@ import {
 import { isApiClientError, type SaveTourPayload } from '@pasta/api-client';
 import { formatDate } from '@pasta/utils';
 import { useMutation } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 
 import { adminApi } from '@/lib/session';
 
@@ -57,6 +57,21 @@ export interface TourEditorValue {
   published: boolean;
   createdAt?: string;
   updatedAt?: string;
+}
+
+/** A plan moved one place in `direction`, or the list unchanged at either end. */
+function movePlan(plans: TourPlanRow[], index: number, direction: -1 | 1): TourPlanRow[] {
+  const target = index + direction;
+  if (target < 0 || target >= plans.length) return plans;
+
+  const next = [...plans];
+  const moved = next[index];
+  const displaced = next[target];
+  if (!moved || !displaced) return plans;
+
+  next[index] = displaced;
+  next[target] = moved;
+  return next;
 }
 
 const TOUR_TYPES = [
@@ -280,20 +295,8 @@ export function TourEditor({
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold">Highlights, Inclusions &amp; Notes</h2>
-                  <p className="text-muted-foreground mt-0.5 text-sm">
-                    These three lists appear on the public tour page. Save when you are done.
-                  </p>
-                </div>
-                <SaveButton region="lists" />
-              </div>
-            </CardContent>
-          </Card>
-
+          {/* The design places the three lists directly under Basic
+              Information, each in its own card, with one Save for the group. */}
           <div className="grid gap-6 lg:grid-cols-3">
             {[
               {
@@ -321,6 +324,12 @@ export function TourEditor({
                 </CardContent>
               </Card>
             ))}
+          </div>
+
+          {/* The design gives these three cards no Save of their own, but edits
+              have to reach the server somehow, so one button covers the group. */}
+          <div className="flex justify-end">
+            <SaveButton region="lists" />
           </div>
 
           <TourGalleryPanel
@@ -399,53 +408,96 @@ export function TourEditor({
                 </Button>
               </div>
 
-              <ol className="flex flex-col gap-3">
-                {value.plans.map((plan, index) => (
-                  <li key={index} className="rounded-field border-border flex gap-3 border p-3">
-                    <span className="bg-brand-gradient text-primary-foreground flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold">
-                      {index + 1}
-                    </span>
+              {value.plans.length === 0 ? (
+                <p className="text-muted-foreground rounded-field border-border border border-dashed p-6 text-center text-sm">
+                  No itinerary steps yet. Add one to describe how the tour runs.
+                </p>
+              ) : (
+                <ol className="flex flex-col gap-3">
+                  {value.plans.map((plan, index) => (
+                    <li key={index} className="rounded-field border-border flex gap-3 border p-3">
+                      <span className="bg-brand-gradient text-primary-foreground flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold">
+                        {index + 1}
+                      </span>
 
-                    <div className="flex min-w-0 flex-1 flex-col gap-2">
-                      <Input
-                        value={plan.title}
-                        placeholder="Step title"
-                        aria-label={`Plan ${index + 1} title`}
-                        className="h-9"
-                        onChange={(event) => {
-                          const next = [...value.plans];
-                          next[index] = { ...plan, title: event.target.value };
-                          patch({ plans: next });
-                        }}
-                      />
-                      <Textarea
-                        rows={2}
-                        value={plan.description}
-                        placeholder="What happens in this step?"
-                        aria-label={`Plan ${index + 1} description`}
-                        onChange={(event) => {
-                          const next = [...value.plans];
-                          next[index] = { ...plan, description: event.target.value };
-                          patch({ plans: next });
-                        }}
-                      />
-                    </div>
+                      <div className="flex min-w-0 flex-1 flex-col gap-2">
+                        <Input
+                          value={plan.title}
+                          placeholder="Step title"
+                          aria-label={`Plan ${index + 1} title`}
+                          className="h-9"
+                          onChange={(event) => {
+                            const next = [...value.plans];
+                            next[index] = { ...plan, title: event.target.value };
+                            patch({ plans: next });
+                          }}
+                        />
+                        <Textarea
+                          rows={2}
+                          value={plan.description}
+                          placeholder="What happens in this step?"
+                          aria-label={`Plan ${index + 1} description`}
+                          onChange={(event) => {
+                            const next = [...value.plans];
+                            next[index] = { ...plan, description: event.target.value };
+                            patch({ plans: next });
+                          }}
+                        />
+                      </div>
 
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="text-danger hover:bg-danger-soft size-8 shrink-0"
-                      aria-label={`Delete plan ${index + 1}`}
-                      onClick={() => patch({ plans: value.plans.filter((_, i) => i !== index) })}
-                    >
-                      <Trash2 aria-hidden />
-                    </Button>
-                  </li>
-                ))}
-              </ol>
+                      {/*
+                        Reordering by button rather than drag: the position is
+                        what the public itinerary renders in, and arrows work
+                        with a keyboard and a screen reader, which a drag handle
+                        alone does not.
+                      */}
+                      <div className="flex shrink-0 flex-col gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-8"
+                          aria-label={`Move plan ${index + 1} up`}
+                          disabled={index === 0}
+                          onClick={() => patch({ plans: movePlan(value.plans, index, -1) })}
+                        >
+                          <ChevronUp aria-hidden />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-8"
+                          aria-label={`Move plan ${index + 1} down`}
+                          disabled={index === value.plans.length - 1}
+                          onClick={() => patch({ plans: movePlan(value.plans, index, 1) })}
+                        >
+                          <ChevronDown aria-hidden />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="text-danger hover:bg-danger-soft size-8"
+                          aria-label={`Delete plan ${index + 1}`}
+                          onClick={() =>
+                            patch({ plans: value.plans.filter((_, i) => i !== index) })
+                          }
+                        >
+                          <Trash2 aria-hidden />
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
 
-              <p className="text-muted-foreground mt-3 text-xs">Plans run in the order shown.</p>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <p className="text-muted-foreground text-xs">
+                  Plans run in the order shown. Reorder with the arrows.
+                </p>
+                <SaveButton region="plans" />
+              </div>
             </CardContent>
           </Card>
 

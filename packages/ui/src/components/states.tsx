@@ -84,19 +84,23 @@ export function ErrorState({
 export interface StatCardProps {
   label: string;
   value: React.ReactNode;
+  /**
+   * Descriptive subline under the value — "All time tours", "64.5% of total".
+   *
+   * Not to be confused with the percentage *deltas* ("+12.5% vs last week")
+   * that the client struck from the dashboard: those compared periods, these
+   * just say what the number counts. The dashboard passes none; the Tours,
+   * Bookings and Blogs screens do, as their designs show.
+   */
+  hint?: React.ReactNode;
   icon?: React.ReactNode;
   /** Background tone of the icon bubble. */
   tone?: 'brand' | 'success' | 'warning' | 'danger' | 'info';
   className?: string;
 }
 
-/**
- * KPI tile used across the admin screens.
- *
- * Deliberately label + value only: the percentage deltas and comparison
- * sublines drawn in the mock were struck out in the client mark-ups.
- */
-export function StatCard({ label, value, icon, tone = 'brand', className }: StatCardProps) {
+/** KPI tile used across the admin screens. */
+export function StatCard({ label, value, hint, icon, tone = 'brand', className }: StatCardProps) {
   const tones = {
     brand: 'bg-accent text-accent-foreground',
     success: 'bg-success-soft text-success-foreground',
@@ -125,6 +129,9 @@ export function StatCard({ label, value, icon, tone = 'brand', className }: Stat
       <span className="min-w-0">
         <span className="text-muted-foreground block truncate text-sm">{label}</span>
         <span className="block text-2xl font-semibold tabular-nums">{value}</span>
+        {hint ? (
+          <span className="text-muted-foreground mt-0.5 block truncate text-xs">{hint}</span>
+        ) : null}
       </span>
     </div>
   );

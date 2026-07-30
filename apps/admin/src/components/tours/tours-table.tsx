@@ -9,14 +9,17 @@ import {
   Card,
   CardContent,
   DataTable,
+  FilterPanel,
+  FilterRange,
   Input,
-  Pagination,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
   StatusPill,
+  TableFooter,
+  Thumbnail,
   type ColumnDef,
   useToast,
 } from '@pasta/ui';
@@ -27,28 +30,62 @@ import { Eye, Pencil, RotateCcw, Search, Trash2 } from 'lucide-react';
 import type { AdminTour } from '@pasta/api-client';
 
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
+import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { adminApi } from '@/lib/session';
 
 export interface ToursTableProps {
   locations: string[];
 }
 
+/** The advanced filters behind the Filters button. */
+interface Advanced {
+  from: string;
+  to: string;
+  minPrice: string;
+  maxPrice: string;
+}
+
+const NO_ADVANCED: Advanced = { from: '', to: '', minPrice: '', maxPrice: '' };
+
+/** Major units as typed, to the minor units the API stores. */
+function toMinor(value: string): number | undefined {
+  if (value.trim() === '') return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) : undefined;
+}
+
 export function ToursTable({ locations }: ToursTableProps) {
   const [search, setSearch] = React.useState('');
   const [status, setStatus] = React.useState('ALL');
   const [location, setLocation] = React.useState('ALL');
+  const [advanced, setAdvanced] = React.useState<Advanced>(NO_ADVANCED);
   const [page, setPage] = React.useState(1);
-  const perPage = 10;
+  const [perPage, setPerPage] = React.useState(10);
+
+  // Typing fires one request when the operator stops, not one per keystroke.
+  const debouncedSearch = useDebouncedValue(search, 300);
+
+  /** Any narrowing change belongs back on page 1 — page 3 of a new result set is usually empty. */
+  function narrow(apply: () => void) {
+    apply();
+    setPage(1);
+  }
+
+  const activeAdvanced = Object.values(advanced).filter((entry) => entry !== '').length;
 
   // Filtering, sorting and paging all happen server-side, so a 24-tour
   // catalogue never ships in full to the browser.
   const query = useQuery({
-    queryKey: ['admin', 'tours', { search, status, location, page }],
+    queryKey: ['admin', 'tours', { debouncedSearch, status, location, advanced, page, perPage }],
     queryFn: () =>
       adminApi.admin.tours({
-        search: search.trim() || undefined,
+        search: debouncedSearch.trim() || undefined,
         status,
         location: location === 'ALL' ? undefined : location,
+        from: advanced.from || undefined,
+        to: advanced.to || undefined,
+        minPriceMinor: toMinor(advanced.minPrice),
+        maxPriceMinor: toMinor(advanced.maxPrice),
         page,
         limit: perPage,
       }),
@@ -78,10 +115,10 @@ export function ToursTable({ locations }: ToursTableProps) {
         header: 'Tour',
         cell: ({ row }) => (
           <div className="flex items-center gap-3">
-            <span
-              role="img"
-              aria-label={row.original.title}
-              className="rounded-field h-12 w-20 shrink-0 bg-[linear-gradient(140deg,#f3ddb8,#e3b76f_55%,#b5751f)]"
+            <Thumbnail
+              src={row.original.coverImage}
+              alt={row.original.title}
+              className="h-12 w-20"
             />
             <span className="min-w-0">
               <span className="block font-medium">{row.original.title}</span>
@@ -150,13 +187,12 @@ export function ToursTable({ locations }: ToursTableProps) {
     [],
   );
 
-  const totalPages = Math.max(1, Math.ceil(total / perPage));
-  const hasFilters = search !== '' || status !== 'ALL' || location !== 'ALL';
+  const hasFilters = search !== '' || status !== 'ALL' || location !== 'ALL' || activeAdvanced > 0;
 
   return (
     <div className="flex flex-col gap-6">
       <Card>
-        <CardContent className="grid gap-3 p-4 lg:grid-cols-[1fr_13rem_13rem_auto]">
+        <CardContent className="grid gap-3 p-4 lg:grid-cols-[1fr_13rem_13rem_auto_auto]">
           <div>
             <label htmlFor="tour-search" className="sr-only">
               Search tours
@@ -165,10 +201,7 @@ export function ToursTable({ locations }: ToursTableProps) {
               id="tour-search"
               type="search"
               value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                setPage(1);
-              }}
+              onChange={(event) => narrow(() => setSearch(event.target.value))}
               placeholder="Search tours by title or location..."
               leadingIcon={<Search aria-hidden />}
             />
@@ -178,13 +211,7 @@ export function ToursTable({ locations }: ToursTableProps) {
             <label htmlFor="tour-status" className="text-muted-foreground text-xs">
               Status
             </label>
-            <Select
-              value={status}
-              onValueChange={(next) => {
-                setStatus(next);
-                setPage(1);
-              }}
-            >
+            <Select value={status} onValueChange={(next) => narrow(() => setStatus(next))}>
               <SelectTrigger id="tour-status" className="h-10">
                 <SelectValue />
               </SelectTrigger>
@@ -200,13 +227,7 @@ export function ToursTable({ locations }: ToursTableProps) {
             <label htmlFor="tour-location" className="text-muted-foreground text-xs">
               Location
             </label>
-            <Select
-              value={location}
-              onValueChange={(next) => {
-                setLocation(next);
-                setPage(1);
-              }}
-            >
+            <Select value={location} onValueChange={(next) => narrow(() => setLocation(next))}>
               <SelectTrigger id="tour-location" className="h-10">
                 <SelectValue />
               </SelectTrigger>
@@ -221,17 +242,68 @@ export function ToursTable({ locations }: ToursTableProps) {
             </Select>
           </div>
 
+          <FilterPanel
+            activeCount={activeAdvanced}
+            onClear={() => narrow(() => setAdvanced(NO_ADVANCED))}
+          >
+            <FilterRange legend="Last updated">
+              <Input
+                type="date"
+                aria-label="Updated on or after"
+                value={advanced.from}
+                onChange={(event) =>
+                  narrow(() => setAdvanced({ ...advanced, from: event.target.value }))
+                }
+              />
+              <Input
+                type="date"
+                aria-label="Updated on or before"
+                value={advanced.to}
+                onChange={(event) =>
+                  narrow(() => setAdvanced({ ...advanced, to: event.target.value }))
+                }
+              />
+            </FilterRange>
+
+            <FilterRange legend="Adult price (USD)">
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                placeholder="Min"
+                aria-label="Lowest adult price"
+                value={advanced.minPrice}
+                onChange={(event) =>
+                  narrow(() => setAdvanced({ ...advanced, minPrice: event.target.value }))
+                }
+              />
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                placeholder="Max"
+                aria-label="Highest adult price"
+                value={advanced.maxPrice}
+                onChange={(event) =>
+                  narrow(() => setAdvanced({ ...advanced, maxPrice: event.target.value }))
+                }
+              />
+            </FilterRange>
+          </FilterPanel>
+
           <Button
             variant="ghost"
             className="self-end"
             leadingIcon={<RotateCcw aria-hidden />}
             disabled={!hasFilters}
-            onClick={() => {
-              setSearch('');
-              setStatus('ALL');
-              setLocation('ALL');
-              setPage(1);
-            }}
+            onClick={() =>
+              narrow(() => {
+                setSearch('');
+                setStatus('ALL');
+                setLocation('ALL');
+                setAdvanced(NO_ADVANCED);
+              })
+            }
           >
             Reset
           </Button>
@@ -246,12 +318,15 @@ export function ToursTable({ locations }: ToursTableProps) {
         emptyDescription="Adjust the search or reset the filters to see every tour."
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <p className="text-muted-foreground text-sm">
-          Showing {rows.length} of {total} tours
-        </p>
-        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
-      </div>
+      <TableFooter
+        page={page}
+        perPage={perPage}
+        rowCount={rows.length}
+        total={total}
+        noun="tours"
+        onPageChange={setPage}
+        onPerPageChange={(next) => narrow(() => setPerPage(next))}
+      />
 
       <ConfirmDialog
         open={pendingDelete !== null}

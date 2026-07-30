@@ -58,24 +58,28 @@ export default function ToursPage() {
             <StatCard
               label="Total Tours"
               value={stats.data?.total ?? 0}
+              hint="All time tours"
               icon={<Landmark aria-hidden />}
               tone="warning"
             />
             <StatCard
               label="Published Tours"
               value={stats.data?.published ?? 0}
+              hint="Live and visible"
               icon={<CheckCircle2 aria-hidden />}
               tone="success"
             />
             <StatCard
               label="Draft Tours"
               value={stats.data?.draft ?? 0}
+              hint="Not published yet"
               icon={<FileText aria-hidden />}
               tone="warning"
             />
             <StatCard
               label="Total Locations"
               value={stats.data?.locations ?? 0}
+              hint="Cities & destinations"
               icon={<MapPin aria-hidden />}
               tone="info"
             />
