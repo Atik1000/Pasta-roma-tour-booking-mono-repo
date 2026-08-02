@@ -11,11 +11,14 @@
  *
  *   pnpm --filter @pasta/api db:seed
  */
+import { join } from 'node:path';
+
 import { hash } from '@node-rs/argon2';
 import { PrismaPg } from '@prisma/adapter-pg';
 
 import { PrismaClient } from '../src/generated/prisma/client';
 import { BLOG_CATEGORIES, BLOG_POSTS, FILLER_TOURS, LOCATIONS, TOURS } from './seed-data';
+import { writeSeedImage } from './seed-images';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -111,10 +114,28 @@ const LAST_NAMES = [
   'Hansen',
 ];
 
-const IMAGE_BASE = 'https://images.unsplash.com/photo';
-/** Stable placeholder URLs — replaced by real uploads through the admin panel. */
+/**
+ * Where placeholder images are written, and the origin they are served from.
+ *
+ * `UPLOAD_DIR` in the API is resolved against `process.cwd()`, and the seed
+ * runs from the same directory, so the two agree.
+ */
+const UPLOADS_DIR = join(process.cwd(), 'uploads');
+const API_ORIGIN = new URL(
+  process.env.PUBLIC_API_URL ?? process.env.API_PUBLIC_URL ?? 'http://localhost:4000/api/v1',
+).origin;
+
+/**
+ * Stable placeholder images — replaced by real uploads through the admin panel.
+ *
+ * These used to be `images.unsplash.com/photo-<slug>-<n>` URLs built from the
+ * tour slug. They look plausible but no such photo ids exist, so every image in
+ * a freshly seeded database 404'd and the catalogue rendered as "no image"
+ * everywhere. The seed now writes its own files into the directory the API
+ * already serves, so they resolve without network access.
+ */
 const imageUrl = (slug: string, index: number): string =>
-  `${IMAGE_BASE}-${slug}-${index}?auto=format&fit=crop&w=1920&q=80`;
+  writeSeedImage(UPLOADS_DIR, API_ORIGIN, `${slug}-${index}`);
 
 async function reset(): Promise<void> {
   // Order matters: children before parents.
