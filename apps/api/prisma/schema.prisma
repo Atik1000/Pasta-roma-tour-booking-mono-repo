@@ -63,6 +63,9 @@ enum PaymentMethod {
   CARD
   PAYPAL
   APPLE_PAY
+  /// Paid in person, in cash, at the meeting point. Never captured by Stripe:
+  /// the booking is confirmed up front and settled by staff on the day.
+  CASH
 }
 
 enum BlogStatus {

@@ -75,6 +75,8 @@ export class PaymentsService {
    * booking changed is updated rather than silently underpaid.
    */
   async createIntent(reference: string): Promise<PaymentIntentResult> {
+    // Checked before anything touches the database: an environment with no
+    // Stripe keys must answer 503 for this endpoint rather than fail later.
     const stripe = this.client();
 
     const booking = await this.prisma.booking.findFirst({
@@ -109,6 +111,21 @@ export class PaymentsService {
     }
 
     const payment = booking.payments[0];
+
+    /**
+     * A pay-on-arrival booking has no card leg to open.
+     *
+     * Without this a crafted request could raise a PaymentIntent against a cash
+     * booking, and a later webhook would mark it PAID while the money is still
+     * expected in person — the takings would be short with nothing in the
+     * record to show it.
+     */
+    if (payment?.method === 'CASH') {
+      throw new BusinessException(
+        BusinessErrorCode.PaymentAlreadyCaptured,
+        'That booking is set to pay in cash at the meeting point, so there is nothing to pay online.',
+      );
+    }
     const amount = PaymentsService.toStripeAmount(booking.total, booking.currency);
     const currency = booking.currency.toLowerCase();
 
@@ -194,15 +211,26 @@ export class PaymentsService {
     reference: string;
     status: string;
     paymentStatus: string;
+    paymentMethod: string | null;
   }> {
     const booking = await this.prisma.booking.findFirst({
       where: { reference, deletedAt: null },
-      select: { reference: true, status: true, paymentStatus: true },
+      select: {
+        reference: true,
+        status: true,
+        paymentStatus: true,
+        // The method the traveller chose a moment ago, so this discloses
+        // nothing they do not already know — and the confirmation screen needs
+        // it: a cash booking never becomes PAID online, so a page waiting for
+        // that would sit there and then wrongly report the booking unpaid.
+        payments: { orderBy: { createdAt: 'desc' }, take: 1, select: { method: true } },
+      },
     });
 
     if (!booking) throw new NotFoundException('That booking could not be found.');
 
-    return booking;
+    const { payments, ...rest } = booking;
+    return { ...rest, paymentMethod: payments[0]?.method ?? null };
   }
 
   // --- webhook ---------------------------------------------------------------

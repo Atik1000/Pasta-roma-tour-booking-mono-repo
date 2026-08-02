@@ -262,6 +262,7 @@ export function PaymentsTable() {
                 <SelectItem value="CARD">Card</SelectItem>
                 <SelectItem value="PAYPAL">PayPal</SelectItem>
                 <SelectItem value="APPLE_PAY">Apple Pay</SelectItem>
+                <SelectItem value="CASH">Cash</SelectItem>
               </SelectContent>
             </Select>
           </div>

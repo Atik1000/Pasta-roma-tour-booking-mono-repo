@@ -6,7 +6,7 @@ import Link from 'next/link';
 
 import { Button } from '@pasta/ui';
 import { isApiClientError } from '@pasta/api-client';
-import { CalendarClock, CheckCircle2, CreditCard, Loader2, Mail } from 'lucide-react';
+import { Banknote, CalendarClock, CheckCircle2, CreditCard, Loader2, Mail } from 'lucide-react';
 
 import { browserApi } from '@/lib/browser-api';
 
@@ -14,7 +14,7 @@ import { browserApi } from '@/lib/browser-api';
 const POLL_INTERVAL_MS = 2000;
 const POLL_ATTEMPTS = 15;
 
-type Phase = 'waiting' | 'paid' | 'unpaid' | 'unknown';
+type Phase = 'waiting' | 'paid' | 'unpaid' | 'payOnArrival' | 'unknown';
 
 /**
  * What actually happened to the booking, according to the API.
@@ -42,6 +42,16 @@ export function ConfirmationStatus({ reference }: { reference: string }) {
 
         if (result.paymentStatus === 'PAID') {
           setPhase('paid');
+          return;
+        }
+
+        /**
+         * A cash booking settles in person, so it never becomes PAID online.
+         * Polling for that would spin for thirty seconds and then tell the
+         * traveller their confirmed booking is unpaid and needs a card.
+         */
+        if (result.paymentMethod === 'CASH') {
+          setPhase('payOnArrival');
           return;
         }
 
@@ -99,6 +109,46 @@ export function ConfirmationStatus({ reference }: { reference: string }) {
           This usually takes a moment. Reference{' '}
           <strong className="text-foreground font-mono">{reference}</strong>
         </p>
+      </>
+    );
+  }
+
+  if (phase === 'payOnArrival') {
+    return (
+      <>
+        <span className="bg-success-soft text-success flex size-16 items-center justify-center rounded-full">
+          <CheckCircle2 className="size-8" aria-hidden />
+        </span>
+
+        <h1 className="font-display text-3xl font-semibold">Your booking is confirmed</h1>
+        <p className="text-muted-foreground">
+          Your reference is <strong className="text-foreground font-mono">{reference}</strong>
+        </p>
+
+        <ul className="text-muted-foreground flex flex-col gap-3 text-left text-sm">
+          <li className="flex gap-2.5">
+            <Banknote className="text-primary mt-0.5 size-4 shrink-0" aria-hidden />
+            Please bring the full amount in cash to the meeting point. Payment is taken there before
+            the tour starts.
+          </li>
+          <li className="flex gap-2.5">
+            <Mail className="text-primary mt-0.5 size-4 shrink-0" aria-hidden />
+            Your confirmation email has the details and the amount due.
+          </li>
+          <li className="flex gap-2.5">
+            <CalendarClock className="text-primary mt-0.5 size-4 shrink-0" aria-hidden />
+            Please arrive 15 minutes before each departure.
+          </li>
+        </ul>
+
+        <div className="mt-2 flex flex-wrap justify-center gap-3">
+          <Button asChild>
+            <Link href="/my-bookings">View my bookings</Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/tours">Browse more tours</Link>
+          </Button>
+        </div>
       </>
     );
   }

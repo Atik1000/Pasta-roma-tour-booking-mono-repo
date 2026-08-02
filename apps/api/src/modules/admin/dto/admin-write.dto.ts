@@ -310,7 +310,7 @@ export class UpdateBookingItemDto {
   holders?: TicketHolderInputDto[];
 }
 
-const MANUAL_PAYMENT_METHODS = ['CARD', 'PAYPAL', 'APPLE_PAY'] as const;
+const MANUAL_PAYMENT_METHODS = ['CARD', 'PAYPAL', 'APPLE_PAY', 'CASH'] as const;
 
 /**
  * Corrections to a manually-recorded payment.
@@ -324,7 +324,7 @@ export class UpdatePaymentDto {
   @ApiPropertyOptional({ enum: MANUAL_PAYMENT_METHODS })
   @IsOptional()
   @IsIn(MANUAL_PAYMENT_METHODS)
-  method?: 'CARD' | 'PAYPAL' | 'APPLE_PAY';
+  method?: (typeof MANUAL_PAYMENT_METHODS)[number];
 
   @ApiPropertyOptional({ description: 'Reference from the terminal, bank or receipt.' })
   @IsOptional()

@@ -5,7 +5,12 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-import { isApiClientError, type Cart, type TicketHolder } from '@pasta/api-client';
+import {
+  isApiClientError,
+  type Cart,
+  type CheckoutPaymentMethod,
+  type TicketHolder,
+} from '@pasta/api-client';
 import {
   Button,
   Card,
@@ -14,6 +19,8 @@ import {
   FormField,
   Input,
   PriceBreakdown,
+  RadioCard,
+  RadioGroup,
   Skeleton,
 } from '@pasta/ui';
 import { formatClockTime, formatDate, formatMoney } from '@pasta/utils';
@@ -54,6 +61,7 @@ export function CheckoutForm() {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [formError, setFormError] = React.useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = React.useState<Record<string, string>>({});
+  const [paymentMethod, setPaymentMethod] = React.useState<CheckoutPaymentMethod>('CARD');
   const { currency } = useCurrency();
 
   React.useEffect(() => {
@@ -125,11 +133,23 @@ export function CheckoutForm() {
     try {
       // Holder order must match cart order — that is how the API pairs names to tickets.
       const ticketHolders = cart.items.flatMap((item) => holders[item.id] ?? []);
-      const result = await browserApi.checkout.create({ fullName, email, ticketHolders });
+      const result = await browserApi.checkout.create({
+        fullName,
+        email,
+        ticketHolders,
+        paymentMethod,
+      });
       // The server empties the cart once the booking exists.
       clearCartCount();
-      // The booking exists and holds its seats; payment is the next step.
-      router.push(`/checkout/pay?reference=${encodeURIComponent(result.reference)}`);
+
+      // A cash booking is already confirmed and has no card step to take, so it
+      // goes straight to the confirmation screen; a card booking still owes
+      // money and is only holding its seats.
+      router.push(
+        result.paymentMethod === 'CASH'
+          ? `/booking-confirmed?reference=${encodeURIComponent(result.reference)}`
+          : `/checkout/pay?reference=${encodeURIComponent(result.reference)}`,
+      );
     } catch (caught) {
       if (isApiClientError(caught)) {
         setFormError(caught.message);
@@ -371,6 +391,28 @@ export function CheckoutForm() {
               />
             </div>
 
+            <fieldset className="border-border border-t pt-4">
+              <legend className="sr-only">How would you like to pay?</legend>
+              <p className="mb-2.5 text-sm font-medium">How would you like to pay?</p>
+
+              <RadioGroup
+                className="flex flex-col gap-2"
+                value={paymentMethod}
+                onValueChange={(next) => setPaymentMethod(next as CheckoutPaymentMethod)}
+              >
+                <RadioCard
+                  value="CARD"
+                  label="Pay now by card"
+                  description="Secure card payment. Your seats are held for 30 minutes."
+                />
+                <RadioCard
+                  value="CASH"
+                  label="Pay cash at the meeting point"
+                  description={`Bring ${formatMoney(cart.totalMinor, cart.currency)} on the day. Your seats are confirmed straight away.`}
+                />
+              </RadioGroup>
+            </fieldset>
+
             <div className="flex flex-col gap-2.5">
               <Button
                 type="submit"
@@ -379,7 +421,7 @@ export function CheckoutForm() {
                 isLoading={isSubmitting}
                 leadingIcon={<Lock aria-hidden />}
               >
-                Proceed to Payment
+                {paymentMethod === 'CASH' ? 'Confirm Booking' : 'Proceed to Payment'}
               </Button>
               <Button
                 type="button"

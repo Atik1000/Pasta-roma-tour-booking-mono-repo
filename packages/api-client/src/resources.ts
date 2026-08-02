@@ -292,7 +292,12 @@ export interface CheckoutPayload {
   fullName: string;
   email: string;
   ticketHolders: TicketHolder[];
+  /** Defaults to CARD when omitted. CASH confirms the seats and settles in person. */
+  paymentMethod?: CheckoutPaymentMethod;
 }
+
+/** The two methods a traveller can pick; the rest describe how staff recorded a payment. */
+export type CheckoutPaymentMethod = 'CARD' | 'CASH';
 
 export interface CheckoutResult {
   reference: string;
@@ -300,6 +305,7 @@ export interface CheckoutResult {
   totalMinor: number;
   currency: CurrencyCode;
   status: string;
+  paymentMethod: CheckoutPaymentMethod;
   paymentIntentClientSecret: string | null;
 }
 
@@ -335,6 +341,8 @@ export interface BookingPaymentStatus {
   reference: string;
   status: BookingStatusValue;
   paymentStatus: PaymentStatusValue;
+  /** Null only for legacy bookings with no payment row. */
+  paymentMethod: string | null;
 }
 
 // --- admin -------------------------------------------------------------------
@@ -353,6 +361,8 @@ export interface AdminTour {
   title: string;
   description: string;
   location: string;
+  /** The location's country, so the table can group by it without a second call. */
+  country: string;
   durationHours: number;
   priceUsdMinor: number;
   priceEurMinor: number;
@@ -502,6 +512,7 @@ export class AdminResource {
       search?: string;
       status?: string;
       location?: string;
+      country?: string;
       minPriceMinor?: number;
       maxPriceMinor?: number;
       page?: number;

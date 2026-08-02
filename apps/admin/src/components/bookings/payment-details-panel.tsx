@@ -28,6 +28,7 @@ const PAYMENT_METHODS = [
   { value: 'CARD', label: 'Credit Card' },
   { value: 'PAYPAL', label: 'PayPal' },
   { value: 'APPLE_PAY', label: 'Apple Pay' },
+  { value: 'CASH', label: 'Cash' },
 ];
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = Object.fromEntries(

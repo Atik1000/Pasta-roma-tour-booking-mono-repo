@@ -292,6 +292,35 @@ describe('PaymentsService', () => {
 
       await expect(service.createIntent('BK-NOPE')).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    /**
+     * A pay-on-arrival booking is confirmed but deliberately unpaid, so it
+     * passes every other guard here. Without an explicit refusal a crafted
+     * request could open an intent against it, and the webhook would then mark
+     * it PAID while the money is still expected in person — the till would be
+     * short with nothing in the record to explain it.
+     */
+    it('refuses a cash booking — there is no card leg to open', async () => {
+      const { service, prisma, booking, stripe } = makeStubs();
+      prisma.booking.findFirst.mockResolvedValueOnce({
+        ...booking,
+        status: 'CONFIRMED',
+        expiresAt: null,
+        customer: { email: 'a@b.test', fullName: 'Ada' },
+        payments: [
+          {
+            id: 'p1',
+            method: 'CASH',
+            status: 'PENDING',
+            providerIntentId: null,
+            amount: booking.total,
+          },
+        ],
+      } as never);
+
+      await expect(service.createIntent('BK-1')).rejects.toBeInstanceOf(BusinessException);
+      expect(stripe.paymentIntents.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('webhook', () => {

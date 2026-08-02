@@ -5,11 +5,17 @@ import {
   ArrayMinSize,
   IsArray,
   IsEmail,
+  IsIn,
+  IsOptional,
   IsString,
   MaxLength,
   MinLength,
   ValidateNested,
 } from 'class-validator';
+
+/** The payment methods a traveller may choose at checkout. */
+export const CHECKOUT_PAYMENT_METHODS = ['CARD', 'CASH'] as const;
+export type CheckoutPaymentMethod = (typeof CHECKOUT_PAYMENT_METHODS)[number];
 
 export class TicketHolderDto {
   @ApiProperty({ example: 'James' })
@@ -44,6 +50,21 @@ export class CheckoutDto {
   @ValidateNested({ each: true })
   @Type(() => TicketHolderDto)
   ticketHolders!: TicketHolderDto[];
+
+  /**
+   * Only the two methods a traveller can actually pick. The other values of
+   * `PaymentMethod` describe how staff recorded a payment after the fact and
+   * must not be selectable here.
+   */
+  @ApiPropertyOptional({
+    enum: CHECKOUT_PAYMENT_METHODS,
+    default: 'CARD',
+    description:
+      'CARD pays now via Stripe; CASH confirms the seats and settles at the meeting point.',
+  })
+  @IsOptional()
+  @IsIn(CHECKOUT_PAYMENT_METHODS)
+  paymentMethod?: CheckoutPaymentMethod;
 }
 
 export class CheckoutResultDto {
@@ -52,6 +73,11 @@ export class CheckoutResultDto {
   @ApiProperty() totalMinor!: number;
   @ApiProperty({ enum: ['EUR', 'USD'] }) currency!: 'EUR' | 'USD';
   @ApiProperty({ example: 'PENDING' }) status!: string;
+  @ApiProperty({
+    enum: CHECKOUT_PAYMENT_METHODS,
+    description: 'How the booking is being paid — the browser routes on this.',
+  })
+  paymentMethod!: CheckoutPaymentMethod;
   @ApiPropertyOptional({ nullable: true, description: 'Stripe PaymentIntent client secret.' })
   paymentIntentClientSecret!: string | null;
 }

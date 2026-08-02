@@ -42,6 +42,7 @@ export {
   type Cart,
   type CartItem,
   type CheckoutPayload,
+  type CheckoutPaymentMethod,
   type CheckoutResult,
   type DashboardStats,
   type BlogCategory,
