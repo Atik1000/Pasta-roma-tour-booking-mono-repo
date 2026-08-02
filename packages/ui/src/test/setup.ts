@@ -12,3 +12,12 @@ import { afterEach } from 'vitest';
 afterEach(() => {
   cleanup();
 });
+
+/**
+ * jsdom implements no layout, so it ships no `scrollIntoView`. Components that
+ * keep a highlighted row in view call it on every keystroke and would throw
+ * here for a reason that says nothing about their behaviour.
+ */
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = function scrollIntoView() {};
+}

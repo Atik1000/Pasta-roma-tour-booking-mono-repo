@@ -35,6 +35,7 @@ export {
   SelectTrigger,
   SelectValue,
 } from './components/select';
+export { Combobox, type ComboboxOption, type ComboboxProps } from './components/combobox';
 export { Checkbox, RadioCard, RadioGroup, Switch } from './components/toggles';
 export { QuantityStepper, type QuantityStepperProps } from './components/quantity-stepper';
 
