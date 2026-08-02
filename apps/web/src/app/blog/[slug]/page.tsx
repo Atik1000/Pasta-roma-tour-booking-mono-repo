@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
+import { Thumbnail } from '@pasta/ui';
 import { formatDate } from '@pasta/utils';
 import { CalendarDays, Tag } from 'lucide-react';
 
@@ -50,10 +51,10 @@ export default async function BlogArticlePage({ params }: { params: Params }) {
       <main id="main">
         <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:px-8">
           <article className="flex flex-col gap-6">
-            <div
-              role="img"
-              aria-label={post.title}
-              className="rounded-card aspect-[16/8] bg-[linear-gradient(140deg,#f3ddb8,#e3b76f_55%,#b5751f)]"
+            <Thumbnail
+              src={post.coverImage}
+              alt={post.title}
+              className="rounded-card aspect-[16/8] w-full"
             />
 
             {/* Read time was struck from the meta line. */}

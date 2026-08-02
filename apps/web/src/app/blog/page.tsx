@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { Card, EmptyState } from '@pasta/ui';
+import { Card, EmptyState, Thumbnail } from '@pasta/ui';
 import { formatDate } from '@pasta/utils';
 
 import { BlogSidebar } from '@/components/blog/blog-sidebar';
@@ -69,10 +69,10 @@ export default async function BlogPage({ searchParams }: { searchParams: SearchP
                     href={`/blog/${post.slug}`}
                     className="rounded-card border-border bg-card shadow-card hover:shadow-elevated focus-visible:outline-ring group flex flex-col overflow-hidden border transition-all hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-4 sm:flex-row"
                   >
-                    <div
-                      role="img"
-                      aria-label={post.title}
-                      className="aspect-[16/10] shrink-0 bg-[linear-gradient(140deg,#f3ddb8,#e3b76f_55%,#b5751f)] sm:aspect-auto sm:w-56"
+                    <Thumbnail
+                      src={post.coverImage}
+                      alt={post.title}
+                      className="aspect-[16/10] w-full rounded-none sm:aspect-auto sm:w-56"
                     />
 
                     {/* No FEATURED badge, no author byline, no read time — all struck. */}
