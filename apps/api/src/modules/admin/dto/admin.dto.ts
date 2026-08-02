@@ -7,7 +7,7 @@ import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 const TOUR_STATUSES = ['ALL', 'PUBLISHED', 'DRAFT'] as const;
 const BOOKING_STATUSES = ['ALL', 'CONFIRMED', 'PENDING', 'CANCELLED'] as const;
 const PAYMENT_STATUSES = ['ALL', 'PAID', 'PENDING', 'REFUNDED', 'FAILED'] as const;
-const PAYMENT_METHODS = ['ALL', 'CARD', 'PAYPAL', 'APPLE_PAY'] as const;
+const PAYMENT_METHODS = ['ALL', 'CARD', 'PAYPAL', 'APPLE_PAY', 'CASH'] as const;
 
 /**
  * The advanced-filter fields the listing screens share.
@@ -38,6 +38,12 @@ export class ListAdminToursQueryDto extends DateRangeQueryDto {
   @IsString()
   @MaxLength(120)
   location?: string;
+
+  @ApiPropertyOptional({ description: 'Country name, exactly as stored on the location.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  country?: string;
 
   @ApiPropertyOptional({ description: 'Lowest adult price in minor units.' })
   @IsOptional()
@@ -138,6 +144,7 @@ export class AdminTourDto {
   @ApiProperty() title!: string;
   @ApiProperty() description!: string;
   @ApiProperty() location!: string;
+  @ApiProperty({ description: "The location's country." }) country!: string;
   @ApiProperty() durationHours!: number;
   @ApiProperty() priceUsdMinor!: number;
   @ApiProperty() priceEurMinor!: number;

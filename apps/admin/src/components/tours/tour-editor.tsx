@@ -23,7 +23,7 @@ import {
 } from '@pasta/ui';
 import { isApiClientError, type SaveTourPayload } from '@pasta/api-client';
 import { formatDate } from '@pasta/utils';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ArrowLeft, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 
 import { adminApi } from '@/lib/session';
@@ -116,6 +116,8 @@ export function TourEditor({
    */
   const toast = useToast();
 
+  const queryClient = useQueryClient();
+
   const save = useMutation({
     mutationFn: (payload: SaveTourPayload) =>
       value.id ? adminApi.admin.updateTour(value.id, payload) : adminApi.admin.createTour(payload),
@@ -125,12 +127,21 @@ export function TourEditor({
         value.id ? 'Tour saved' : 'Tour created',
         value.id ? 'Your changes are live.' : 'You can now add photos and departures.',
       );
-      if (value.id) return;
+
+      if (value.id) {
+        // Queries here are cached for a minute and nothing else invalidates
+        // them, so without this the tour list, the stat cards and this tour's
+        // own detail keep serving the pre-save snapshot. A saved cover photo
+        // then looks like it never uploaded.
+        await queryClient.invalidateQueries({ queryKey: ['admin', 'tours'] });
+        return;
+      }
 
       // The gallery could not be attached before the tour existed.
       if (value.gallery.length) {
         await adminApi.admin.setTourImages(result.id, value.gallery);
       }
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'tours'] });
       patch({ id: result.id });
       router.replace(`/tours/${result.id}`);
     },
@@ -185,6 +196,18 @@ export function TourEditor({
     </Button>
   );
 
+  /**
+   * Every section's Save sits at the foot of that section, after the fields it
+   * writes, rather than in the heading above them. A heading button reads as
+   * part of the title and is easy to press before finishing the last field.
+   */
+  const SaveFooter = ({ region, hint }: { region: string; hint?: string }) => (
+    <div className="border-border mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+      <p className="text-muted-foreground text-xs">{hint ?? ''}</p>
+      <SaveButton region={region} />
+    </div>
+  );
+
   return (
     <div className="flex flex-col gap-6">
       {error ? (
@@ -222,10 +245,7 @@ export function TourEditor({
         <div className="flex flex-col gap-6">
           <Card>
             <CardContent className="p-6">
-              <div className="mb-5 flex items-center justify-between gap-4">
-                <h2 className="text-lg font-semibold">Basic Information</h2>
-                <SaveButton region="basic" />
-              </div>
+              <h2 className="mb-5 text-lg font-semibold">Basic Information</h2>
 
               <div className="grid gap-5 sm:grid-cols-2">
                 <FormField label="Title" required>
@@ -292,12 +312,22 @@ export function TourEditor({
                   onChange={(event) => patch({ description: event.target.value })}
                 />
               </FormField>
+
+              <SaveFooter region="basic" />
             </CardContent>
           </Card>
 
-          {/* The design places the three lists directly under Basic
-              Information, each in its own card, with one Save for the group. */}
-          <div className="grid gap-6 lg:grid-cols-3">
+          {/*
+            The design places the three lists directly under Basic Information,
+            each in its own card, with one Save for the group.
+
+            Three across only once the column is genuinely wide. This sits in
+            the 1.5fr half of the page, so at `lg` each card was ~200px and the
+            row's fixed grip and buttons left the text field about 30px — the
+            list looked like three empty boxes. Below `2xl` they stack and get
+            the full column instead.
+          */}
+          <div className="grid gap-6 2xl:grid-cols-3">
             {[
               {
                 legend: 'Highlights',
@@ -345,10 +375,7 @@ export function TourEditor({
         <div className="flex flex-col gap-6">
           <Card>
             <CardContent className="p-6">
-              <div className="mb-5 flex items-center justify-between gap-4">
-                <h2 className="text-lg font-semibold">Tickets &amp; Pricing</h2>
-                <SaveButton region="pricing" />
-              </div>
+              <h2 className="mb-5 text-lg font-semibold">Tickets &amp; Pricing</h2>
 
               <div className="grid gap-5 sm:grid-cols-2">
                 <FormField label="Adult Price (USD)" required>
@@ -385,6 +412,8 @@ export function TourEditor({
                   onChange={(event) => patch({ maxTicketsPerTour: event.target.value })}
                 />
               </FormField>
+
+              <SaveFooter region="pricing" />
             </CardContent>
           </Card>
 
@@ -492,21 +521,16 @@ export function TourEditor({
                 </ol>
               )}
 
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <p className="text-muted-foreground text-xs">
-                  Plans run in the order shown. Reorder with the arrows.
-                </p>
-                <SaveButton region="plans" />
-              </div>
+              <SaveFooter
+                region="plans"
+                hint="Plans run in the order shown. Reorder with the arrows."
+              />
             </CardContent>
           </Card>
 
           <Card>
             <CardContent className="p-6">
-              <div className="mb-5 flex items-center justify-between gap-4">
-                <h2 className="text-lg font-semibold">Meeting Point</h2>
-                <SaveButton region="meeting" />
-              </div>
+              <h2 className="mb-5 text-lg font-semibold">Meeting Point</h2>
 
               <div className="flex flex-col gap-5">
                 <FormField label="Title">
@@ -522,13 +546,24 @@ export function TourEditor({
                   />
                 </FormField>
               </div>
+
+              <SaveFooter region="meeting" />
             </CardContent>
           </Card>
 
           {/* The "Created By" card that sat beside this was struck from the design. */}
           <Card>
             <CardContent className="p-6">
+              {/*
+                This card needs a Save of its own like every other region. The
+                toggle repaints the header pill the instant it is flipped, so
+                without one an editor sets a tour to Published, sees it say
+                Published, leaves, and the tour is still a draft — the switch
+                only ever reached the server if they happened to press Save in
+                an unrelated card.
+              */}
               <h2 className="mb-4 text-lg font-semibold">Tour Status</h2>
+
               <label className="flex items-center gap-3">
                 <Switch
                   checked={value.published}
@@ -538,9 +573,8 @@ export function TourEditor({
                   {value.published ? 'Published' : 'Draft'}
                 </span>
               </label>
-              <p className="text-muted-foreground mt-3 text-xs">
-                Unpublished tours will not be visible on the website.
-              </p>
+
+              <SaveFooter region="status" hint="Unpublished tours are hidden from the website." />
             </CardContent>
           </Card>
         </div>

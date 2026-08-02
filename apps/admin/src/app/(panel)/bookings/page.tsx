@@ -62,9 +62,15 @@ export default function BookingsPage() {
         }
       />
 
+      {/*
+        Five across only once the row is genuinely wide enough. At `xl` each
+        card came out ~211px, which clipped three of the labels and the revenue
+        figure itself. Three across gives every card ~360px here, and the
+        five-up layout waits for a viewport that can actually seat it.
+      */}
       <section
         aria-label="Booking totals"
-        className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5"
+        className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 min-[1700px]:grid-cols-5"
       >
         {stats.isLoading ? (
           Array.from({ length: 5 }, (_, index) => <Skeleton key={index} className="h-24" />)

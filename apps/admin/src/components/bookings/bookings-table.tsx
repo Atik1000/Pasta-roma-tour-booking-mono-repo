@@ -15,15 +15,12 @@ import {
   DropdownMenuTrigger,
   FilterPanel,
   FilterRange,
+  Combobox,
   Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   StatusPill,
   TableFooter,
   type ColumnDef,
+  type ComboboxOption,
   useToast,
 } from '@pasta/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -119,6 +116,39 @@ export function BookingsTable({
     (entry) => entry !== '',
   ).length;
 
+  const statusOptions = React.useMemo<ComboboxOption[]>(
+    () => [
+      { value: 'ALL', label: 'All statuses' },
+      { value: 'CONFIRMED', label: 'Confirmed' },
+      { value: 'PENDING', label: 'Pending' },
+      { value: 'CANCELLED', label: 'Cancelled' },
+    ],
+    [],
+  );
+
+  const paymentOptions = React.useMemo<ComboboxOption[]>(
+    () => [
+      // Short enough to fit the trigger; the field's own label already says
+      // which status this is.
+      { value: 'ALL', label: 'All payments' },
+      { value: 'PAID', label: 'Paid' },
+      { value: 'PENDING', label: 'Pending' },
+      { value: 'REFUNDED', label: 'Refunded' },
+      { value: 'FAILED', label: 'Failed' },
+    ],
+    [],
+  );
+
+  // The catalogue runs to a hundred entries, which is well past the point a
+  // plain scrolling list stops being findable.
+  const tourOptions = React.useMemo<ComboboxOption[]>(
+    () => [
+      { value: 'ALL', label: 'All tours' },
+      ...tours.map((entry) => ({ value: entry.id, label: entry.title })),
+    ],
+    [tours],
+  );
+
   const toast = useToast();
 
   const queryClient = useQueryClient();
@@ -203,7 +233,7 @@ export function BookingsTable({
         cell: ({ row }) => (
           <Link
             href={`/bookings/${row.original.reference}`}
-            className="text-primary font-medium hover:underline"
+            className="text-primary whitespace-nowrap font-medium hover:underline"
           >
             {row.original.reference}
           </Link>
@@ -336,75 +366,65 @@ export function BookingsTable({
   return (
     <div className="flex flex-col gap-6">
       <Card>
-        <CardContent className="grid gap-3 p-4 xl:grid-cols-[1fr_12rem_13rem_12rem_auto_auto]">
-          <div>
-            <label htmlFor="booking-search" className="sr-only">
-              Search bookings
+        {/*
+          Every control carries a visible label of the same size and every one
+          is h-11, so `items-end` lands the row on one baseline. Previously the
+          search label was `sr-only` and the selects were shrunk to h-10, which
+          left the search box sitting 20px above its neighbours.
+        */}
+        <CardContent className="grid items-end gap-x-3 gap-y-4 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_11rem_12rem_13rem_auto_auto]">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="booking-search" className="text-muted-foreground text-xs font-medium">
+              Search
             </label>
             <Input
               id="booking-search"
               type="search"
               value={search}
               onChange={(event) => narrow({ search: event.target.value })}
-              placeholder="Search by booking ID, customer, or email..."
+              placeholder="Booking ID, customer or email…"
               leadingIcon={<Search aria-hidden />}
             />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label htmlFor="booking-status" className="text-muted-foreground text-xs">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="booking-status" className="text-muted-foreground text-xs font-medium">
               Booking Status
             </label>
-            <Select value={status} onValueChange={(next) => narrow({ status: next })}>
-              <SelectTrigger id="booking-status" className="h-10">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Statuses</SelectItem>
-                <SelectItem value="CONFIRMED">Confirmed</SelectItem>
-                <SelectItem value="PENDING">Pending</SelectItem>
-                <SelectItem value="CANCELLED">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
+            <Combobox
+              id="booking-status"
+              options={statusOptions}
+              value={status}
+              onValueChange={(next) => narrow({ status: next })}
+            />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label htmlFor="payment-status" className="text-muted-foreground text-xs">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="payment-status" className="text-muted-foreground text-xs font-medium">
               Payment Status
             </label>
-            <Select value={payment} onValueChange={(next) => narrow({ payment: next })}>
-              <SelectTrigger id="payment-status" className="h-10">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Payment Statuses</SelectItem>
-                <SelectItem value="PAID">Paid</SelectItem>
-                <SelectItem value="PENDING">Pending</SelectItem>
-                <SelectItem value="REFUNDED">Refunded</SelectItem>
-                <SelectItem value="FAILED">Failed</SelectItem>
-              </SelectContent>
-            </Select>
+            <Combobox
+              id="payment-status"
+              options={paymentOptions}
+              value={payment}
+              onValueChange={(next) => narrow({ payment: next })}
+            />
           </div>
 
           {/* A booking with two tours appears under both — this asks "contains
               this tour", not "is only this tour". */}
-          <div className="flex flex-col gap-1">
-            <label htmlFor="booking-tour" className="text-muted-foreground text-xs">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="booking-tour" className="text-muted-foreground text-xs font-medium">
               Tours
             </label>
-            <Select value={tour} onValueChange={(next) => narrow({ tour: next })}>
-              <SelectTrigger id="booking-tour" className="h-10">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Tours</SelectItem>
-                {tours.map((entry) => (
-                  <SelectItem key={entry.id} value={entry.id}>
-                    {entry.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              id="booking-tour"
+              options={tourOptions}
+              value={tour}
+              onValueChange={(next) => narrow({ tour: next })}
+              searchPlaceholder="Search tours…"
+              emptyText="No tour matches that."
+            />
           </div>
 
           <FilterPanel
@@ -450,7 +470,6 @@ export function BookingsTable({
 
           <Button
             variant="ghost"
-            className="self-end"
             leadingIcon={<RotateCcw aria-hidden />}
             disabled={!hasFilters}
             onClick={() => narrow(NO_BOOKING_FILTERS)}

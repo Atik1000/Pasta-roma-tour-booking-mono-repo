@@ -8,34 +8,35 @@ import {
   Button,
   Card,
   CardContent,
+  Combobox,
   DataTable,
   FilterPanel,
   FilterRange,
   Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   StatusPill,
   TableFooter,
   Thumbnail,
   type ColumnDef,
+  type ComboboxOption,
   useToast,
 } from '@pasta/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDateTime, formatDuration, formatMoney } from '@pasta/utils';
 import { Eye, Pencil, RotateCcw, Search, Trash2 } from 'lucide-react';
 
-import type { AdminTour } from '@pasta/api-client';
+import type { AdminLocation, AdminTour } from '@pasta/api-client';
 
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
+import { countryFlag } from '@/lib/countries';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { adminApi } from '@/lib/session';
 
 export interface ToursTableProps {
-  locations: string[];
+  /** Every destination, with its country — the two location filters are built from this. */
+  locations: AdminLocation[];
 }
+
+const ALL = 'ALL';
 
 /** The advanced filters behind the Filters button. */
 interface Advanced {
@@ -47,6 +48,19 @@ interface Advanced {
 
 const NO_ADVANCED: Advanced = { from: '', to: '', minPrice: '', maxPrice: '' };
 
+/**
+ * The city half of a location name.
+ *
+ * Locations are stored the way an operator types them — "Naples, Italy" — so a
+ * cell that prints the country above the location would say Italy twice. The
+ * suffix comes off for display only; the stored name is untouched, and a name
+ * that does not carry its country is returned as-is.
+ */
+function cityOf(location: string, country: string): string {
+  const suffix = `, ${country}`;
+  return location.endsWith(suffix) ? location.slice(0, -suffix.length) : location;
+}
+
 /** Major units as typed, to the minor units the API stores. */
 function toMinor(value: string): number | undefined {
   if (value.trim() === '') return undefined;
@@ -56,11 +70,72 @@ function toMinor(value: string): number | undefined {
 
 export function ToursTable({ locations }: ToursTableProps) {
   const [search, setSearch] = React.useState('');
-  const [status, setStatus] = React.useState('ALL');
-  const [location, setLocation] = React.useState('ALL');
+  const [status, setStatus] = React.useState(ALL);
+  const [country, setCountry] = React.useState(ALL);
+  const [location, setLocation] = React.useState(ALL);
   const [advanced, setAdvanced] = React.useState<Advanced>(NO_ADVANCED);
   const [page, setPage] = React.useState(1);
   const [perPage, setPerPage] = React.useState(10);
+
+  const statusOptions = React.useMemo<ComboboxOption[]>(
+    () => [
+      { value: ALL, label: 'All statuses' },
+      { value: 'PUBLISHED', label: 'Published' },
+      { value: 'DRAFT', label: 'Draft' },
+    ],
+    [],
+  );
+
+  // Only countries that actually have a destination — the picker on the Add
+  // Location dialog lists all 250, but filtering by one with no tours would
+  // only ever produce an empty table.
+  const countryOptions = React.useMemo<ComboboxOption[]>(() => {
+    const counts = new Map<string, number>();
+    for (const entry of locations) {
+      counts.set(entry.country, (counts.get(entry.country) ?? 0) + 1);
+    }
+
+    return [
+      { value: ALL, label: 'All countries' },
+      ...[...counts.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([name, count]) => ({
+          value: name,
+          label: name,
+          prefix: countryFlag(name),
+          hint: `${count} ${count === 1 ? 'destination' : 'destinations'}`,
+        })),
+    ];
+  }, [locations]);
+
+  const locationOptions = React.useMemo<ComboboxOption[]>(
+    () => [
+      { value: ALL, label: 'All locations' },
+      ...locations
+        .filter((entry) => country === ALL || entry.country === country)
+        .map((entry) => ({
+          value: entry.name,
+          // "Naples, Italy" earns its country while the list spans the world;
+          // under a chosen country it is just noise on every row.
+          label: country === ALL ? entry.name : cityOf(entry.name, entry.country),
+          keywords: entry.country,
+        })),
+    ],
+    [locations, country],
+  );
+
+  /**
+   * Switching country strands a location from the old one, which would ask the
+   * API for an impossible pair and always return nothing.
+   */
+  function chooseCountry(next: string) {
+    setCountry(next);
+    const stillValid =
+      location === ALL ||
+      next === ALL ||
+      locations.some((entry) => entry.name === location && entry.country === next);
+    if (!stillValid) setLocation(ALL);
+  }
 
   // Typing fires one request when the operator stops, not one per keystroke.
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -76,12 +151,17 @@ export function ToursTable({ locations }: ToursTableProps) {
   // Filtering, sorting and paging all happen server-side, so a 24-tour
   // catalogue never ships in full to the browser.
   const query = useQuery({
-    queryKey: ['admin', 'tours', { debouncedSearch, status, location, advanced, page, perPage }],
+    queryKey: [
+      'admin',
+      'tours',
+      { debouncedSearch, status, country, location, advanced, page, perPage },
+    ],
     queryFn: () =>
       adminApi.admin.tours({
         search: debouncedSearch.trim() || undefined,
         status,
-        location: location === 'ALL' ? undefined : location,
+        country: country === ALL ? undefined : country,
+        location: location === ALL ? undefined : location,
         from: advanced.from || undefined,
         to: advanced.to || undefined,
         minPriceMinor: toMinor(advanced.minPrice),
@@ -129,7 +209,21 @@ export function ToursTable({ locations }: ToursTableProps) {
           </div>
         ),
       },
-      { id: 'location', header: 'Location', cell: ({ row }) => row.original.location },
+      {
+        id: 'destination',
+        header: 'Destination',
+        cell: ({ row }) => (
+          <div className="min-w-0 leading-tight">
+            <span className="flex items-center gap-1.5 font-medium">
+              <span aria-hidden>{countryFlag(row.original.country)}</span>
+              <span className="truncate">{row.original.country}</span>
+            </span>
+            <span className="text-muted-foreground block truncate text-xs">
+              {cityOf(row.original.location, row.original.country)}
+            </span>
+          </div>
+        ),
+      },
       {
         id: 'duration',
         header: 'Duration',
@@ -187,59 +281,71 @@ export function ToursTable({ locations }: ToursTableProps) {
     [],
   );
 
-  const hasFilters = search !== '' || status !== 'ALL' || location !== 'ALL' || activeAdvanced > 0;
+  const hasFilters =
+    search !== '' || status !== ALL || country !== ALL || location !== ALL || activeAdvanced > 0;
 
   return (
     <div className="flex flex-col gap-6">
       <Card>
-        <CardContent className="grid gap-3 p-4 lg:grid-cols-[1fr_13rem_13rem_auto_auto]">
-          <div>
-            <label htmlFor="tour-search" className="sr-only">
-              Search tours
+        {/*
+          Every control carries a visible label of the same size and every one is
+          h-11, so `items-end` lands the whole row on one baseline. The old bar
+          hid the search label and shrank the selects to h-10, which left the
+          search box floating a label's height above its neighbours.
+        */}
+        <CardContent className="grid items-end gap-x-3 gap-y-4 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_10rem_12rem_12rem_auto_auto]">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="tour-search" className="text-muted-foreground text-xs font-medium">
+              Search
             </label>
             <Input
               id="tour-search"
               type="search"
               value={search}
               onChange={(event) => narrow(() => setSearch(event.target.value))}
-              placeholder="Search tours by title or location..."
+              placeholder="Title or location…"
               leadingIcon={<Search aria-hidden />}
             />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label htmlFor="tour-status" className="text-muted-foreground text-xs">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="tour-status" className="text-muted-foreground text-xs font-medium">
               Status
             </label>
-            <Select value={status} onValueChange={(next) => narrow(() => setStatus(next))}>
-              <SelectTrigger id="tour-status" className="h-10">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Statuses</SelectItem>
-                <SelectItem value="PUBLISHED">Published</SelectItem>
-                <SelectItem value="DRAFT">Draft</SelectItem>
-              </SelectContent>
-            </Select>
+            <Combobox
+              id="tour-status"
+              options={statusOptions}
+              value={status}
+              onValueChange={(next) => narrow(() => setStatus(next))}
+            />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label htmlFor="tour-location" className="text-muted-foreground text-xs">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="tour-country" className="text-muted-foreground text-xs font-medium">
+              Country
+            </label>
+            <Combobox
+              id="tour-country"
+              options={countryOptions}
+              value={country}
+              onValueChange={(next) => narrow(() => chooseCountry(next))}
+              searchPlaceholder="Search countries…"
+              emptyText="No country has a destination yet."
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="tour-location" className="text-muted-foreground text-xs font-medium">
               Location
             </label>
-            <Select value={location} onValueChange={(next) => narrow(() => setLocation(next))}>
-              <SelectTrigger id="tour-location" className="h-10">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Locations</SelectItem>
-                {locations.map((entry) => (
-                  <SelectItem key={entry} value={entry}>
-                    {entry}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              id="tour-location"
+              options={locationOptions}
+              value={location}
+              onValueChange={(next) => narrow(() => setLocation(next))}
+              searchPlaceholder="Search locations…"
+              emptyText={country === ALL ? 'No locations yet.' : `No locations in ${country} yet.`}
+            />
           </div>
 
           <FilterPanel
@@ -293,14 +399,14 @@ export function ToursTable({ locations }: ToursTableProps) {
 
           <Button
             variant="ghost"
-            className="self-end"
             leadingIcon={<RotateCcw aria-hidden />}
             disabled={!hasFilters}
             onClick={() =>
               narrow(() => {
                 setSearch('');
-                setStatus('ALL');
-                setLocation('ALL');
+                setStatus(ALL);
+                setCountry(ALL);
+                setLocation(ALL);
                 setAdvanced(NO_ADVANCED);
               })
             }

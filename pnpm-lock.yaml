@@ -56,6 +56,9 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.64.2
         version: 5.101.4(react@19.2.8)
+      countries-list:
+        specifier: ^3.4.1
+        version: 3.4.1
       framer-motion:
         specifier: ^12.0.6
         version: 12.42.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -4422,6 +4425,9 @@ packages:
     peerDependenciesMeta:
       typescript:
         optional: true
+
+  countries-list@3.4.1:
+    resolution: {integrity: sha512-sKLGAZD5EAdzQwQ19vOp/9u33MTjmZ0CkdXPYtp/An6cyIlJ/E8TwGf2FcPe1AnzHO+h7nbTfoHyXIi58Hpa+Q==}
 
   create-jest@29.7.0:
     resolution: {integrity: sha512-Adz2bdH0Vq3F53KEMJOoftQFutWCukm6J24wbPWRO4k1kMY7gS7ds/uoJkNuV8wDCtWWnuwGcJwpWcih+zEW1Q==}
@@ -11600,6 +11606,8 @@ snapshots:
       path-type: 4.0.0
     optionalDependencies:
       typescript: 5.9.3
+
+  countries-list@3.4.1: {}
 
   create-jest@29.7.0(@types/node@22.20.1)(ts-node@10.9.2(@types/node@22.20.1)(typescript@5.9.3)):
     dependencies:

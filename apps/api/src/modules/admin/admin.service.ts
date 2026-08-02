@@ -272,7 +272,16 @@ export class AdminService {
           }
         : {}),
       ...(query.status && query.status !== 'ALL' ? { status: query.status } : {}),
-      ...(query.location ? { location: { name: query.location } } : {}),
+      // One `location` key, not two spreads — a second would overwrite the
+      // first and silently drop whichever of the pair was set earlier.
+      ...(query.location || query.country
+        ? {
+            location: {
+              ...(query.location ? { name: query.location } : {}),
+              ...(query.country ? { country: query.country } : {}),
+            },
+          }
+        : {}),
       // Advanced filters. The price bounds read the USD column because that is
       // the one the table shows, so the filter matches the visible figures.
       ...(query.minPriceMinor !== undefined || query.maxPriceMinor !== undefined
@@ -293,7 +302,7 @@ export class AdminService {
         skip,
         take,
         include: {
-          location: { select: { name: true } },
+          location: { select: { name: true, country: true } },
           images: { where: { isCover: true }, take: 1, select: { url: true } },
         },
       }),
@@ -307,6 +316,7 @@ export class AdminService {
         title: row.title,
         description: row.description,
         location: row.location.name,
+        country: row.location.country,
         durationHours: Number(row.durationHours),
         priceUsdMinor: row.priceAdultUsd,
         priceEurMinor: row.priceAdultEur,

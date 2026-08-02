@@ -4,7 +4,7 @@ import * as React from 'react';
 
 import { Button, Card, CardContent, useToast } from '@pasta/ui';
 import { isApiClientError } from '@pasta/api-client';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ImagePlus, Upload, X } from 'lucide-react';
 
 import { adminApi } from '@/lib/session';
@@ -33,6 +33,8 @@ export function TourGalleryPanel({
   onChange: (next: string[]) => void;
 }) {
   const toast = useToast();
+
+  const queryClient = useQueryClient();
 
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -69,6 +71,11 @@ export function TourGalleryPanel({
 
   const persist = useMutation({
     mutationFn: (urls: string[]) => adminApi.admin.setTourImages(tourId!, urls),
+    // The cover photo the tour list renders comes from this list, and those
+    // queries are cached for a minute. Without dropping them the row keeps its
+    // old thumbnail — or its "no image" gradient — long after the upload
+    // succeeded, which reads as the upload having failed.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'tours'] }),
     onError: (caught: unknown) => {
       const message = isApiClientError(caught)
         ? caught.message

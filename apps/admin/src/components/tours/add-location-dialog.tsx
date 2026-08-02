@@ -10,14 +10,25 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Combobox,
   FormField,
   Input,
   useToast,
+  type ComboboxOption,
 } from '@pasta/ui';
 import { isApiClientError } from '@pasta/api-client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
+import { COUNTRIES } from '@/lib/countries';
 import { adminApi } from '@/lib/session';
+
+/** Built once — the list is constant, and 252 objects per render is waste. */
+const COUNTRY_OPTIONS: ComboboxOption[] = COUNTRIES.map((country) => ({
+  value: country.code,
+  label: country.name,
+  prefix: country.flag,
+  keywords: country.code,
+}));
 
 /**
  * "Add New Location" from the tours toolbar. A location is two fields, so it
@@ -31,15 +42,19 @@ export function AddLocationDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [name, setName] = React.useState('');
-  const [country, setCountry] = React.useState('Italy');
+  // The select works in ISO codes because country names are not unique enough
+  // to key a list by; the API still receives the English name.
+  const [countryCode, setCountryCode] = React.useState<string>('IT');
   const [error, setError] = React.useState<string | null>(null);
+
+  const country = COUNTRIES.find((option) => option.code === countryCode)?.name ?? '';
 
   const toast = useToast();
 
   const queryClient = useQueryClient();
 
   const create = useMutation({
-    mutationFn: () => adminApi.admin.createLocation({ name: name.trim(), country: country.trim() }),
+    mutationFn: () => adminApi.admin.createLocation({ name: name.trim(), country }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['locations'] });
       void queryClient.invalidateQueries({ queryKey: ['admin', 'tours'] });
@@ -71,7 +86,7 @@ export function AddLocationDialog({
           className="flex flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault();
-            if (name.trim().length >= 2) create.mutate();
+            if (name.trim().length >= 2 && country) create.mutate();
           }}
         >
           <FormField label="Name" required error={error ?? undefined}>
@@ -85,11 +100,14 @@ export function AddLocationDialog({
           </FormField>
 
           <FormField label="Country" required>
-            <Input
-              value={country}
-              onChange={(event) => setCountry(event.target.value)}
-              required
-              minLength={2}
+            <Combobox
+              aria-label="Country"
+              options={COUNTRY_OPTIONS}
+              value={countryCode}
+              onValueChange={setCountryCode}
+              placeholder="Choose a country"
+              searchPlaceholder="Search 250+ countries…"
+              emptyText="No country matches that."
             />
           </FormField>
 

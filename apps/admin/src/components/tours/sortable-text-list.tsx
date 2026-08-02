@@ -73,6 +73,13 @@ export function SortableTextList({
               <GripVertical className="size-4" />
             </span>
 
+            {/*
+              `min-w-0 flex-1` rather than the input's own `w-full`: the row is
+              a flex line whose grip and three buttons are fixed width, and a
+              percentage width resolves against the card, not against what is
+              left over. Without it the field collapses to a few pixels — enough
+              to type into but far too narrow to read back.
+            */}
             <Input
               value={item}
               placeholder={placeholder}
@@ -82,7 +89,7 @@ export function SortableTextList({
                 next[index] = event.target.value;
                 onChange(next);
               }}
-              className="h-10"
+              className="h-10 min-w-0 flex-1"
             />
 
             <span className="flex shrink-0 items-center">
@@ -90,7 +97,7 @@ export function SortableTextList({
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="size-8"
+                className="size-7"
                 aria-label={`Move ${legend} item ${index + 1} up`}
                 disabled={index === 0}
                 onClick={() => move(index, index - 1)}
@@ -101,7 +108,7 @@ export function SortableTextList({
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="size-8"
+                className="size-7"
                 aria-label={`Move ${legend} item ${index + 1} down`}
                 disabled={index === items.length - 1}
                 onClick={() => move(index, index + 1)}
@@ -112,7 +119,7 @@ export function SortableTextList({
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="text-danger hover:bg-danger-soft size-8"
+                className="text-danger hover:bg-danger-soft size-7"
                 aria-label={`Remove ${legend} item ${index + 1}`}
                 onClick={() => onChange(items.filter((_, position) => position !== index))}
               >

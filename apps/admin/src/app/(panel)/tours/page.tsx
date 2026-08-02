@@ -87,7 +87,7 @@ export default function ToursPage() {
         )}
       </section>
 
-      <ToursTable locations={(locations.data ?? []).map((entry) => entry.name)} />
+      <ToursTable locations={locations.data ?? []} />
 
       <AddLocationDialog open={addingLocation} onOpenChange={setAddingLocation} />
     </>
