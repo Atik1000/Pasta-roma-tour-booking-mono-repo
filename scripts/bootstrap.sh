@@ -16,9 +16,11 @@
 set -Eeuo pipefail
 
 readonly HOST="${1:-}"
-readonly WEB_PORT="${2:-3000}"
-readonly ADMIN_PORT="${3:-3001}"
-readonly API_PORT="${4:-4000}"
+# Requested ports. These only decide anything on a first run — an existing
+# .env.production is left alone, and its ports win. See "effective ports" below.
+readonly WEB_PORT_ARG="${2:-3000}"
+readonly ADMIN_PORT_ARG="${3:-3001}"
+readonly API_PORT_ARG="${4:-4000}"
 readonly ENV_FILE=".env.production"
 
 log() { printf '\033[1;33m▶ %s\033[0m\n' "$*"; }
@@ -67,17 +69,17 @@ JWT_REFRESH_SECRET=$(secret)
 JWT_ACCESS_TTL=15m
 JWT_REFRESH_TTL=30d
 
-SITE_URL=http://${HOST}:${WEB_PORT}
-ADMIN_URL=http://${HOST}:${ADMIN_PORT}
-PUBLIC_API_URL=http://${HOST}:${API_PORT}/api/v1
-CORS_ORIGINS=http://${HOST}:${WEB_PORT},http://${HOST}:${ADMIN_PORT}
+SITE_URL=http://${HOST}:${WEB_PORT_ARG}
+ADMIN_URL=http://${HOST}:${ADMIN_PORT_ARG}
+PUBLIC_API_URL=http://${HOST}:${API_PORT_ARG}/api/v1
+CORS_ORIGINS=http://${HOST}:${WEB_PORT_ARG},http://${HOST}:${ADMIN_PORT_ARG}
 
 # Published on every interface so the app is reachable by IP without a proxy.
 # Put nginx in front and set this back to 127.0.0.1 before going live.
 BIND_HOST=0.0.0.0
-WEB_PORT=${WEB_PORT}
-ADMIN_PORT=${ADMIN_PORT}
-API_PORT=${API_PORT}
+WEB_PORT=${WEB_PORT_ARG}
+ADMIN_PORT=${ADMIN_PORT_ARG}
+API_PORT=${API_PORT_ARG}
 
 STRIPE_SECRET_KEY=
 STRIPE_PUBLISHABLE_KEY=
@@ -93,6 +95,30 @@ ENV
 
   chmod 600 "$ENV_FILE"
   ok "Secrets generated (file is chmod 600)"
+fi
+
+# --- effective ports -----------------------------------------------------------
+#
+# What the stack actually publishes comes from $ENV_FILE, which an earlier run
+# may have written with different ports — re-running this script does not
+# rewrite it. Everything downstream has to read them back rather than trust the
+# arguments, because those two disagree on exactly the runs where it matters.
+#
+# When they did disagree the damage was quiet and doubled: ufw opened 3000/3001
+# while the app listened on 8080/8081, so the firewall blocked the only ports
+# that were serving; and the summary sent you to :3000, which on a host running
+# more than one project is somebody else's app answering — the deploy looked
+# fine and the site looked unchanged.
+# `|| true` because grep exits 1 on no match, and under `set -e` that would
+# abort the deploy over a variable the fallback already handles.
+port_from_env() { grep -E "^$1=" "$ENV_FILE" | cut -d= -f2 | tr -d '[:space:]' || true; }
+
+WEB_PORT="$(port_from_env WEB_PORT)";     readonly WEB_PORT="${WEB_PORT:-$WEB_PORT_ARG}"
+ADMIN_PORT="$(port_from_env ADMIN_PORT)"; readonly ADMIN_PORT="${ADMIN_PORT:-$ADMIN_PORT_ARG}"
+API_PORT="$(port_from_env API_PORT)";     readonly API_PORT="${API_PORT:-$API_PORT_ARG}"
+
+if [[ "$WEB_PORT" != "$WEB_PORT_ARG" || "$ADMIN_PORT" != "$ADMIN_PORT_ARG" || "$API_PORT" != "$API_PORT_ARG" ]]; then
+  log "$ENV_FILE sets ports ${WEB_PORT}/${ADMIN_PORT}/${API_PORT} — using those, not the arguments"
 fi
 
 # --- firewall ------------------------------------------------------------------

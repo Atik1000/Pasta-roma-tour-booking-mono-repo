@@ -47,7 +47,9 @@ compose() { docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"; }
 # have run, with a message about "programming external connectivity" that says
 # nothing about which port or what holds it. Checking first turns ten wasted
 # minutes into one clear line.
-port_from_env() { grep -E "^$1=" "$ENV_FILE" | cut -d= -f2 | tr -d '[:space:]'; }
+# `|| true` because grep exits 1 on no match, and under `set -e` that aborts the
+# deploy — over a variable whose `${port:-default}` fallback already covers it.
+port_from_env() { grep -E "^$1=" "$ENV_FILE" | cut -d= -f2 | tr -d '[:space:]' || true; }
 
 # Host ports this stack already publishes, one per line.
 #
