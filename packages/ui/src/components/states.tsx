@@ -112,7 +112,11 @@ export function StatCard({ label, value, hint, icon, tone = 'brand', className }
   return (
     <div
       className={cn(
-        'rounded-card border-border bg-card shadow-card flex items-center gap-4 border p-5',
+        // `min-w-0` so a long value cannot widen the card past its grid track.
+        // Without it the track's automatic minimum is the value's own width, a
+        // figure like "€28,319.00" pushes the whole row wider than the page,
+        // and the last card is clipped at the edge.
+        'rounded-card border-border bg-card shadow-card flex min-w-0 items-center gap-4 border p-5',
         className,
       )}
     >
