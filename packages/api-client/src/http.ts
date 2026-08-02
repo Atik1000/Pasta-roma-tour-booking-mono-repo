@@ -70,6 +70,24 @@ export class HttpClient {
       if (token) {
         config.headers.set('Authorization', `Bearer ${token}`);
       }
+
+      /**
+       * A multipart body must not inherit the instance's JSON content type.
+       *
+       * Axios only leaves a FormData body alone when the content type is not
+       * JSON: with `application/json` still set it runs the body through
+       * `formDataToJSON` instead, and a File serialises to `{}`. The request
+       * then arrives as `{"file":{}}` with a JSON content type, the server's
+       * multipart parser never runs, and the upload fails with "No file was
+       * received" — while the browser network tab shows a perfectly ordinary
+       * 400. Clearing it here lets the browser set `multipart/form-data` with
+       * the boundary it generates, which is the only thing that can produce a
+       * valid boundary anyway.
+       */
+      if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+        config.headers.delete('Content-Type');
+      }
+
       return config;
     });
 
