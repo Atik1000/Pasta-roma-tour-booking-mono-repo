@@ -15,13 +15,12 @@ import {
   Input,
   StatusPill,
   TableFooter,
-  Thumbnail,
   type ColumnDef,
   type ComboboxOption,
   useToast,
 } from '@pasta/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatDateTime, formatDuration, formatMoney } from '@pasta/utils';
+import { formatDateTime, formatMoney } from '@pasta/utils';
 import { Eye, Pencil, RotateCcw, Search, Trash2 } from 'lucide-react';
 
 import type { AdminLocation, AdminTour } from '@pasta/api-client';
@@ -193,20 +192,16 @@ export function ToursTable({ locations }: ToursTableProps) {
       {
         id: 'tour',
         header: 'Tour',
+        // No thumbnail: the cover photo belongs to the tour page, and a column
+        // of tiny crops told an operator scanning this list nothing the title
+        // did not already say.
         cell: ({ row }) => (
-          <div className="flex items-center gap-3">
-            <Thumbnail
-              src={row.original.coverImage}
-              alt={row.original.title}
-              className="h-12 w-20"
-            />
-            <span className="min-w-0">
-              <span className="block font-medium">{row.original.title}</span>
-              <span className="text-muted-foreground block max-w-xs truncate text-xs">
-                {row.original.description}
-              </span>
+          <span className="block min-w-0">
+            <span className="block font-medium">{row.original.title}</span>
+            <span className="text-muted-foreground block max-w-md truncate text-xs">
+              {row.original.description}
             </span>
-          </div>
+          </span>
         ),
       },
       {
@@ -223,11 +218,6 @@ export function ToursTable({ locations }: ToursTableProps) {
             </span>
           </div>
         ),
-      },
-      {
-        id: 'duration',
-        header: 'Duration',
-        cell: ({ row }) => formatDuration(row.original.durationHours),
       },
       {
         id: 'price',

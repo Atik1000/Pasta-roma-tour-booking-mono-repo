@@ -5,6 +5,7 @@ import * as React from 'react';
 import Link from 'next/link';
 
 import {
+  Badge,
   Button,
   Card,
   CardContent,
@@ -19,7 +20,6 @@ import {
   SelectValue,
   StatusPill,
   TableFooter,
-  Thumbnail,
   type ColumnDef,
   useToast,
 } from '@pasta/ui';
@@ -30,7 +30,6 @@ import { Eye, Pencil, RotateCcw, Search, Trash2 } from 'lucide-react';
 import type { AdminBlog } from '@pasta/api-client';
 
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
-import { env } from '@/lib/env';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { adminApi } from '@/lib/session';
 
@@ -100,39 +99,38 @@ export function BlogsTable({ categories }: { categories: string[] }) {
       {
         id: 'blog',
         header: 'Blog',
+        // No thumbnail: the cover photo is the article's, not something an
+        // operator scans a list by.
         cell: ({ row }) => (
-          <div className="flex items-center gap-3">
-            <Thumbnail
-              src={row.original.coverImage}
-              alt={row.original.title}
-              className="h-12 w-16"
-            />
-            <span className="min-w-0">
-              <span className="block font-medium">{row.original.title}</span>
-              <span className="text-muted-foreground block max-w-md truncate text-xs">
-                {row.original.excerpt}
-              </span>
+          <span className="block min-w-0">
+            <span className="block font-medium">{row.original.title}</span>
+            <span className="text-muted-foreground block max-w-md truncate text-xs">
+              {row.original.excerpt}
             </span>
-          </div>
+          </span>
         ),
       },
-      { id: 'category', header: 'Category', cell: ({ row }) => row.original.categories.join(', ') },
+      {
+        id: 'category',
+        header: 'Category',
+        // A post can sit in several categories, and every one of them shows.
+        cell: ({ row }) =>
+          row.original.categories.length === 0 ? (
+            <span className="text-muted-foreground">—</span>
+          ) : (
+            <span className="flex flex-wrap gap-1">
+              {row.original.categories.map((entry) => (
+                <Badge key={entry} tone="neutral">
+                  {entry}
+                </Badge>
+              ))}
+            </span>
+          ),
+      },
       {
         id: 'status',
         header: 'Status',
         cell: ({ row }) => <StatusPill status={row.original.status} />,
-      },
-      {
-        id: 'publishedAt',
-        header: 'Published On',
-        cell: ({ row }) =>
-          row.original.publishedAt ? (
-            <span className="text-muted-foreground whitespace-nowrap text-sm">
-              {formatDateTime(row.original.publishedAt)}
-            </span>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          ),
       },
       {
         id: 'updatedAt',
@@ -148,19 +146,18 @@ export function BlogsTable({ categories }: { categories: string[] }) {
         header: 'Actions',
         cell: ({ row }) => (
           <div className="flex items-center justify-end gap-1.5">
+            {/* The details screen, not the live article: a draft has no page on
+                the site, so linking straight out answered 404 for exactly the
+                posts most in need of a look. The live link lives in there. */}
             <Button
               variant="subtle"
               size="icon"
               asChild
-              aria-label={`Preview ${row.original.title}`}
+              aria-label={`View details for ${row.original.title}`}
             >
-              <a
-                href={`${env.NEXT_PUBLIC_SITE_URL}/blog/${row.original.slug}`}
-                target="_blank"
-                rel="noreferrer noopener"
-              >
+              <Link href={`/blogs/${row.original.id}/preview`}>
                 <Eye aria-hidden />
-              </a>
+              </Link>
             </Button>
             <Button variant="subtle" size="icon" asChild aria-label={`Edit ${row.original.title}`}>
               <Link href={`/blogs/${row.original.id}`}>

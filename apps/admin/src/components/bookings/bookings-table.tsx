@@ -251,25 +251,10 @@ export function BookingsTable({
           </span>
         ),
       },
-      {
-        id: 'tours',
-        header: 'Tours',
-        cell: ({ row }) => (
-          <span className="block min-w-0 max-w-56">
-            <span className="block text-sm">
-              {row.original.tours.length} {row.original.tours.length === 1 ? 'Tour' : 'Tours'}
-            </span>
-            <span className="text-muted-foreground block truncate text-xs">
-              {row.original.tours.join(', ')}
-            </span>
-          </span>
-        ),
-      },
-      {
-        id: 'tickets',
-        header: 'Total Tickets',
-        cell: ({ row }) => <span className="tabular-nums">{row.original.tickets}</span>,
-      },
+      // Tours and ticket counts were dropped from this table: both are per-item
+      // detail that the booking screen lays out properly, and neither survived
+      // being squeezed into a column. The Tours filter above still narrows by
+      // them.
       {
         id: 'amount',
         header: 'Total Amount',
