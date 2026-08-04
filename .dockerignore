@@ -19,3 +19,15 @@ docker/*.yml
 docs
 *.md
 !README.md
+
+# Design references (Figma exports, ~27 MB). No build reads them — the only
+# thing they did was travel to the Docker daemon on every single build.
+# These match at the context root only, so app source of the same name is safe.
+Admin Panel
+Blogs
+Cart
+Cart checkout_ Booking Checkout
+Check Ticket availability
+Landing page
+My Bookings
+Tours

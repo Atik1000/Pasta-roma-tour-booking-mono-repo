@@ -23,7 +23,16 @@ export const appConfig = registerAs('app', () => {
     isTest: parsed.NODE_ENV === 'test',
     port: parsed.PORT,
     prefix: parsed.API_PREFIX,
-    corsOrigins: parsed.CORS_ORIGINS.split(',')
+    /**
+     * Browser origins allowed to call this API.
+     *
+     * `SITE_URL` and `ADMIN_URL` are folded in unconditionally. They already
+     * name the two front-ends by definition, and leaving them out meant a
+     * deployment that moved to a real domain had to remember to update two
+     * variables instead of one — forgetting the second is a whole site that
+     * loads and then fails every request with a CORS error.
+     */
+    corsOrigins: [...parsed.CORS_ORIGINS.split(','), parsed.SITE_URL, parsed.ADMIN_URL]
       .map((origin) => origin.trim())
       .filter(Boolean),
     siteUrl: parsed.SITE_URL,

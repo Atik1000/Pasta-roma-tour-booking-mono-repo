@@ -4,10 +4,14 @@
 #
 # Run it ON the server, from the repository root:
 #
-#     ./scripts/deploy.sh
+#     ./scripts/deploy.sh              # normal release, reuses build cache
+#     ./scripts/deploy.sh --clean      # discard every cache, rebuild from zero
+#     ./scripts/deploy.sh --seed       # also seed, but only on an empty catalogue
 #
 # Idempotent: safe to run again for every release. It pulls the branch,
-# rebuilds only what changed, applies pending migrations, and restarts.
+# rebuilds only what changed, applies pending migrations, and restarts. On a
+# host with no .env.production it hands off to bootstrap.sh first, so a bare
+# server needs this one command and nothing else.
 set -Eeuo pipefail
 
 readonly COMPOSE_FILE="docker/docker-compose.prod.yml"
@@ -20,6 +24,39 @@ die()  { printf '\033[1;31m✖ %s\033[0m\n' "$*" >&2; exit 1; }
 
 trap 'die "Deploy failed on line $LINENO. Nothing was restarted; the previous release is still serving."' ERR
 
+# --- arguments -------------------------------------------------------------------
+#
+# Parsed as flags rather than positionally: `--seed --clean` and `--clean --seed`
+# both have to work, and the old `$1 == "--seed"` test silently ignored the flag
+# whenever anything else was passed first.
+
+CLEAN=0
+SEED=0
+for arg in "$@"; do
+  case "$arg" in
+    --clean) CLEAN=1 ;;
+    --seed)  SEED=1 ;;
+    -h|--help)
+      cat <<'USAGE'
+Deploys Pasta Roma Tour (API, landing page, admin panel) on this host.
+
+  ./scripts/deploy.sh            Release the current branch. Reuses the build
+                                 cache, so only what changed is rebuilt.
+  ./scripts/deploy.sh --clean    Discard every cache and rebuild from the base
+                                 images. Slow. Data volumes are not touched.
+  ./scripts/deploy.sh --seed     Also seed the demo catalogue, but only if it
+                                 is empty. Combines with --clean.
+
+With no .env.production present this bootstraps the host first, so a bare
+server needs nothing but this one command.
+USAGE
+      exit 0
+      ;;
+    *) die "Unknown option: $arg. Valid options: --clean, --seed." ;;
+  esac
+done
+readonly CLEAN SEED
+
 # --- preflight -----------------------------------------------------------------
 
 command -v docker >/dev/null || die "Docker is not installed. See docs/SERVER-SETUP.md."
@@ -29,8 +66,35 @@ docker compose version >/dev/null 2>&1 || die "The Docker Compose plugin is miss
 # happily with dockerd stopped, and the failure then surfaces several steps
 # later as an opaque socket error mid-build.
 docker info >/dev/null 2>&1 || die "The Docker daemon is not running. Start it with: systemctl enable --now docker"
+
+# The Dockerfiles mount a pnpm store as a build cache, which is a BuildKit
+# feature. The legacy builder does not merely ignore `RUN --mount` — it fails on
+# it, ten minutes into the build. get.docker.com ships the plugin, so a missing
+# buildx means Docker came from somewhere else.
+docker buildx version >/dev/null 2>&1 \
+  || die "docker buildx is missing, and the build needs it (the Dockerfiles use BuildKit cache mounts). Install it with: apt-get install docker-buildx-plugin  — or reinstall Docker from https://get.docker.com"
 [[ -f "$COMPOSE_FILE" ]] || die "Run this from the repository root."
-[[ -f "$ENV_FILE" ]] || die "$ENV_FILE is missing. Copy .env.production.example and fill it in."
+
+# A host with no environment file has never been deployed to. Rather than stop
+# and ask for a second command, hand off to bootstrap.sh, which writes the file
+# with real generated secrets and then calls this script back. By that point
+# $ENV_FILE exists, so the handoff cannot loop — the guard below only fires if
+# bootstrap somehow returned without writing it.
+if [[ ! -f "$ENV_FILE" ]]; then
+  [[ -z "${PASTA_BOOTSTRAPPED:-}" ]] \
+    || die "bootstrap.sh ran but $ENV_FILE is still missing. Create it by hand from .env.production.example."
+
+  # The address the browser will use. A public-IP lookup is the only thing that
+  # knows it on a cloud VM, whose own interfaces carry a private address; the
+  # LAN address and then localhost are the fallbacks when there is no egress.
+  host="$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || true)"
+  [[ -n "$host" ]] || host="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  [[ -n "$host" ]] || host="localhost"
+
+  log "No $ENV_FILE — first run. Bootstrapping for http://$host"
+  export PASTA_BOOTSTRAPPED=1
+  exec ./scripts/bootstrap.sh "$host"
+fi
 
 # Refuse to deploy with the placeholder secrets still in place: an instance
 # that boots with a known JWT secret is an instance anyone can mint tokens for.
@@ -94,10 +158,50 @@ if [[ -d .git ]]; then
   ok "At $(git rev-parse --short HEAD) — $(git log -1 --pretty=%s)"
 fi
 
+# --- clean -----------------------------------------------------------------------
+#
+# `--clean` is for when a cached layer is the problem: a dependency that was
+# republished under the same version, a half-written pnpm store, a stale Next
+# build. It throws away every cache the build can draw on and starts again from
+# the base images.
+#
+# It does not touch data. Pruning removes build cache, stopped containers and
+# unreferenced images — the postgres-data, redis-data and uploads volumes are
+# named and stay referenced by the stack, so bookings and uploaded photos
+# survive a clean deploy. Only `docker compose down -v` destroys those, and
+# nothing in this script runs it.
+
+if (( CLEAN )); then
+  log "Removing workspace build output (.next, dist, .turbo)"
+  # These are in .dockerignore, so they never reach the image either way.
+  # Removing them frees disk on the host and stops a later local (non-Docker)
+  # build from reading a cache that predates this release.
+  rm -rf .turbo apps/*/.next apps/*/dist apps/*/.turbo packages/*/dist packages/*/.turbo
+  # -prune rather than filtering the results: pnpm puts a node_modules in every
+  # workspace, and descending into all of them takes far longer than the delete.
+  # Piped to xargs rather than using find's own -delete, because -delete implies
+  # -depth, and -depth silently turns -prune into a no-op.
+  find . -name node_modules -prune -o -name '*.tsbuildinfo' -print0 2>/dev/null \
+    | xargs -0r rm -f || true
+
+  # Also drops the pnpm store and dlx cache mounts the Dockerfiles declare, so
+  # the next install genuinely re-resolves every package.
+  log "Pruning the Docker build cache — this affects every project on this host"
+  docker builder prune -af >/dev/null
+  ok "Caches cleared"
+fi
+
 # --- build ---------------------------------------------------------------------
 
-log "Building images (only changed layers rebuild)"
-compose build
+if (( CLEAN )); then
+  # --pull so the base images are re-fetched too; a clean build that reuses a
+  # months-old node:22-alpine is not the fresh build it claims to be.
+  log "Building images from scratch — no cache, this takes several minutes"
+  compose build --no-cache --pull
+else
+  log "Building images (only changed layers rebuild)"
+  compose build
+fi
 
 # --- migrate -------------------------------------------------------------------
 #
@@ -111,7 +215,14 @@ ok "Schema up to date"
 # --- release -------------------------------------------------------------------
 
 log "Starting services"
-compose up -d --remove-orphans
+if (( CLEAN )); then
+  # Compose leaves a container alone when its config hash is unchanged. After a
+  # --no-cache rebuild the image is new but the config is not, so without this
+  # the old container keeps running and the clean rebuild never reaches traffic.
+  compose up -d --remove-orphans --force-recreate
+else
+  compose up -d --remove-orphans
+fi
 
 # --- verify --------------------------------------------------------------------
 #
@@ -137,7 +248,7 @@ done
 # against a live database would destroy real bookings; the emptiness check is
 # what makes `--seed` safe to leave in a deploy command you run every release.
 
-if [[ "${1:-}" == "--seed" ]]; then
+if (( SEED )); then
   log "Checking whether the catalogue is empty"
   tours="$(compose exec -T postgres psql -U "${POSTGRES_USER:-pasta}" -d "${POSTGRES_DB:-pasta_roma_tour}" \
     -tAc 'SELECT COUNT(*) FROM tours' 2>/dev/null || echo 0)"

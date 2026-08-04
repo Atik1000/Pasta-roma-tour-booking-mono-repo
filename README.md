@@ -80,8 +80,19 @@ Nothing is mocked there: the same guards, pipes and SQL that ship are what the t
 
 ## Deployment
 
+One command on the server, for the first release and every one after it:
+
 ```bash
-docker compose -f docker/docker-compose.prod.yml --env-file .env.production up -d --build
+./scripts/deploy.sh              # build, migrate, restart, verify
+./scripts/deploy.sh --clean      # same, but discard every cache first
+```
+
+On a host with no `.env.production` this bootstraps the machine first — installs Docker, generates secrets, writes the environment, seeds the catalogue — so a bare server needs nothing else. Data volumes are never touched, including by `--clean`.
+
+If the server has no clone of the repo, push the files up instead — run this **on your machine**:
+
+```bash
+./scripts/upload.sh root@your-server 8080 8081 8082
 ```
 
 See `docs/DEPLOYMENT.md` for the environment variables, health-check endpoints, migration workflow and the pre-launch security checklist.

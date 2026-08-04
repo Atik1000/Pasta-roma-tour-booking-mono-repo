@@ -11,15 +11,25 @@ RUN corepack enable
 # The repo's `prepare` script installs git hooks, which have no meaning inside
 # an image and fail when devDependencies are skipped.
 ENV HUSKY=0
+# Pin the pnpm store and the dlx cache to fixed paths so the BuildKit cache
+# mounts below can hold them across builds. Without this the store lives inside
+# the layer and every rebuild re-downloads the whole dependency tree.
+ENV PNPM_HOME=/pnpm
+ENV XDG_CACHE_HOME=/pnpm/.cache
+ENV PATH="$PNPM_HOME:$PATH"
 WORKDIR /app
 
 FROM base AS pruner
 COPY . .
-RUN pnpm dlx turbo@2 prune @pasta/admin --docker
+RUN --mount=type=cache,id=pnpm-dlx,target=/pnpm/.cache,sharing=locked \
+    pnpm dlx turbo@2 prune @pasta/admin --docker
 
+# `sharing=locked` serialises access: the API, web and admin images build
+# concurrently and would otherwise write to one store at the same time.
 FROM base AS deps
 COPY --from=pruner /app/out/json/ .
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store,sharing=locked \
+    pnpm install --frozen-lockfile
 
 FROM base AS builder
 COPY --from=deps /app/ .

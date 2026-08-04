@@ -10,21 +10,74 @@ Three images, one database, one Redis. Everything is driven by environment varia
 
 ## Quick start
 
+One command, on the server, from the repository root:
+
 ```bash
-cp .env.example .env.production      # then fill it in — see the table below
-docker compose -f docker/docker-compose.prod.yml --env-file .env.production up -d --build
+./scripts/deploy.sh
 ```
+
+That is the whole thing, on a bare host and on every release after it. It checks the daemon and the ports, pulls the branch, builds the three images, applies migrations, restarts, and waits for the API to answer its readiness probe before calling the deploy done.
+
+On a host with no `.env.production` it hands off to `scripts/bootstrap.sh` first, which installs Docker if it is missing, generates real secrets, writes the environment for this machine's public address, and seeds the demo catalogue. So the first run and the hundredth are the same command.
 
 The stack starts in order: Postgres and Redis become healthy, a one-shot `migrate` service applies pending migrations, and only then do the API and front-ends start. **A failed migration stops the deploy** rather than letting the API serve against a stale schema.
 
-Seed a brand-new environment once:
+| Command                       | Use it when                                                                     |
+| ----------------------------- | ------------------------------------------------------------------------------- |
+| `./scripts/deploy.sh`         | Normal release. Only changed layers rebuild                                     |
+| `./scripts/deploy.sh --clean` | A cached layer is wrong. Discards every cache and rebuilds from the base images |
+| `./scripts/deploy.sh --seed`  | Also seed the demo catalogue — but only if it is empty. Combines with `--clean` |
+
+`pnpm run release` and `pnpm run release:clean` are aliases for the first two. (They are not called `deploy`, because `pnpm deploy` is a built-in pnpm command that does something else entirely.)
+
+After a seed, immediately change the seeded admin password — it is a known value.
+
+### Deploying without git
+
+When the server has no clone — no GitHub access, no deploy key, or you simply do not want a checkout there — push the files up instead. From **your machine**, at the repository root:
 
 ```bash
-docker compose -f docker/docker-compose.prod.yml --env-file .env.production \
-  run --rm api prisma db seed
+./scripts/upload.sh root@203.0.113.10                  # default ports
+./scripts/upload.sh root@203.0.113.10 8080 8081 8082   # custom ports
 ```
 
-Then immediately change the seeded admin password — it is a known value.
+It rsyncs the working tree and then runs the deploy on the far end — `bootstrap.sh` the first time, `deploy.sh` after that. Roughly 2.6 MB goes over the wire, not 2.4 GB: `node_modules`, `.git`, `.next`, `dist` and the design folders are all excluded, and Docker rebuilds what it needs.
+
+This works because `deploy.sh` only pulls when a `.git` directory is present. Without one it skips straight to building, so the uploaded files are what gets deployed.
+
+Two things the script is careful about:
+
+- **`.env.production` is never transferred and never deleted.** It exists only on the server, holding the secrets `bootstrap.sh` generated there. Since it is absent locally, a plain `--delete` would read that as "remove it" and take out the database password and JWT secrets of a running deployment.
+- **`--delete` is otherwise on**, so a file you delete locally also disappears from the server instead of lingering and being compiled into the next image.
+
+`REMOTE_DIR` overrides the destination (default `/var/www/pasta-roma-tour`), `PUBLIC_HOST` overrides the browser-facing address when it differs from the SSH one, and `DEPLOY_ARGS=--clean` forwards flags to the remote `deploy.sh`.
+
+Run `ssh-copy-id root@your-host` once first, or every deploy asks for the password two or three times.
+
+### Deploying by hand
+
+`deploy.sh` is a wrapper, not a requirement. The equivalent is:
+
+```bash
+docker compose -f docker/docker-compose.prod.yml --env-file .env.production up -d --build
+```
+
+## Caching and `--clean`
+
+Each Dockerfile mounts the pnpm store as a BuildKit cache shared across all three images, so the second image in a build reuses what the first downloaded — in practice around 500 of 630 packages, turning a ~140 s install into ~19 s.
+
+This means **the build requires `docker buildx`.** The legacy builder does not ignore `RUN --mount`; it fails on it. `deploy.sh` checks for buildx up front so that surfaces as one clear line instead of an error ten minutes into a build. Docker installed from `get.docker.com` (which `bootstrap.sh` uses) includes the plugin; otherwise `apt-get install docker-buildx-plugin`.
+
+`--clean` exists for the case where a cache is the problem — a dependency republished under the same version, a half-written store, a stale Next build. It:
+
+1. removes the workspace's own build output (`.next`, `dist`, `.turbo`, `*.tsbuildinfo`),
+2. runs `docker builder prune -af`, which drops the layer cache **and** the pnpm store mounts,
+3. rebuilds with `--no-cache --pull`, so even the base images are re-fetched,
+4. recreates the containers with `--force-recreate` — without it Compose leaves a container running when only the image changed, and the clean rebuild never reaches traffic.
+
+Two things to know. `docker builder prune -af` is host-wide, so it clears the build cache of every other project on that machine. And a clean build is slow — several minutes, with nothing warm to fall back on.
+
+**`--clean` does not touch your data.** It prunes build cache, stopped containers and unreferenced images. `postgres-data`, `redis-data` and `uploads` are named volumes that stay referenced by the stack, so bookings and uploaded photos survive. Only `docker compose down -v` would destroy those, and nothing in these scripts runs it.
 
 ## Required environment
 
