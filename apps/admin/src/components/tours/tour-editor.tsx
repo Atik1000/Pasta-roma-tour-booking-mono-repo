@@ -24,13 +24,23 @@ import {
 import { isApiClientError, type SaveTourPayload } from '@pasta/api-client';
 import { formatDate } from '@pasta/utils';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  Save,
+  Trash2,
+} from 'lucide-react';
 
 import { adminApi } from '@/lib/session';
 
 import { SortableTextList } from './sortable-text-list';
 import { TourGalleryPanel } from './tour-gallery-panel';
 import { TourSlotsPanel } from './tour-slots-panel';
+import { TourStepRail } from './tour-step-rail';
 
 export interface TourPlanRow {
   title: string;
@@ -83,16 +93,34 @@ const TOUR_TYPES = [
   { value: 'PRIVATE', label: 'Private Tour' },
 ];
 
+interface Step {
+  id: string;
+  label: string;
+  title: string;
+  description: string;
+  required?: boolean;
+  complete: boolean;
+  render: () => React.ReactNode;
+}
+
 /**
- * Tour create/edit.
+ * Tour create/edit, as a wizard.
  *
  * Three points from the mark-ups are load-bearing here:
  *   • the rich-text toolbar over Description was struck — it is a plain textarea
  *   • "Max Adult Tickets per Booking" was annotated *Tour* → "Max Tickets per Tour"
  *   • the "Created By" card was struck
  *
- * The design also saves in independent regions rather than one global submit,
- * so Basic Information, Tickets & Pricing and Meeting Point each own a button.
+ * The design put each region in its own card with its own Save. Built out in
+ * full that came to eight cards across two columns and six Save buttons, and
+ * two panels greyed out until the tour existed with nothing saying why. Nothing
+ * on that screen said where to start, what depended on what, or which Save
+ * wrote which fields — every one of them wrote the whole record anyway.
+ *
+ * So the fields now arrive one step at a time, in the order a tour is actually
+ * described, under a single Save. The one real dependency is handled by
+ * sequencing rather than by a disabled panel: departures need a tour to attach
+ * to, so that step only exists once the tour has been created.
  */
 export function TourEditor({
   initialValue,
@@ -105,22 +133,37 @@ export function TourEditor({
 }) {
   const router = useRouter();
   const [value, setValue] = React.useState(initialValue);
-  const [savedRegion, setSavedRegion] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [step, setStep] = React.useState(0);
+  const [furthest, setFurthest] = React.useState(0);
+
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const headingRef = React.useRef<HTMLHeadingElement>(null);
+
+  function patch(changes: Partial<TourEditorValue>) {
+    setValue((current) => ({ ...current, ...changes }));
+  }
 
   /**
-   * The design saves in independent regions, but a tour is one document — the
-   * whole thing is written on any Save, so a partial save can never leave the
-   * record inconsistent. The button label still reports the region the editor
-   * pressed.
+   * Set by the gallery step, and only while that step is on screen. Calling it
+   * uploads any photo that was chosen but never uploaded — see the panel's
+   * `flush` for why Save has to do that rather than drop them.
    */
-  const toast = useToast();
-
-  const queryClient = useQueryClient();
+  const flushGallery = React.useRef<(() => Promise<string[]>) | null>(null);
 
   const save = useMutation({
-    mutationFn: (payload: SaveTourPayload) =>
-      value.id ? adminApi.admin.updateTour(value.id, payload) : adminApi.admin.createTour(payload),
+    mutationFn: async (payload: SaveTourPayload) => {
+      // Before the record is written, so a failed upload fails the save rather
+      // than leaving a tour saved with photos that quietly went nowhere.
+      const gallery = flushGallery.current ? await flushGallery.current() : value.gallery;
+
+      const result = value.id
+        ? await adminApi.admin.updateTour(value.id, payload)
+        : await adminApi.admin.createTour(payload);
+
+      return { ...result, gallery };
+    },
     onSuccess: async (result) => {
       setError(null);
       toast.success(
@@ -138,8 +181,8 @@ export function TourEditor({
       }
 
       // The gallery could not be attached before the tour existed.
-      if (value.gallery.length) {
-        await adminApi.admin.setTourImages(result.id, value.gallery);
+      if (result.gallery.length) {
+        await adminApi.admin.setTourImages(result.id, result.gallery);
       }
       await queryClient.invalidateQueries({ queryKey: ['admin', 'tours'] });
       patch({ id: result.id });
@@ -174,39 +217,352 @@ export function TourEditor({
       published: value.published,
     };
   }
-  function patch(changes: Partial<TourEditorValue>) {
-    setValue((current) => ({ ...current, ...changes }));
-  }
 
-  function saveRegion(region: string) {
-    setSavedRegion(region);
-    save.mutate(toPayload(), {
-      onSettled: () => window.setTimeout(() => setSavedRegion(null), 2000),
+  const steps: Step[] = [
+    {
+      id: 'basic',
+      label: 'Basics',
+      title: 'Basic information',
+      description: 'What the tour is called, how long it runs, and where it happens.',
+      required: true,
+      complete: Boolean(
+        value.title.trim() &&
+        value.durationHours &&
+        value.location &&
+        value.type &&
+        value.description.trim(),
+      ),
+      render: () => (
+        <div className="flex flex-col gap-5">
+          <div className="grid gap-5 sm:grid-cols-2">
+            <FormField label="Title" required>
+              <Input
+                value={value.title}
+                onChange={(event) => patch({ title: event.target.value })}
+              />
+            </FormField>
+
+            <FormField label="Duration (in hours)" required>
+              <Input
+                type="number"
+                min="0.5"
+                step="0.5"
+                value={value.durationHours}
+                onChange={(event) => patch({ durationHours: event.target.value })}
+              />
+            </FormField>
+
+            <FormField label="Location" required>
+              <Select value={value.location} onValueChange={(next) => patch({ location: next })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a location" />
+                </SelectTrigger>
+                <SelectContent>
+                  {locations.map((entry) => (
+                    <SelectItem key={entry} value={entry}>
+                      {entry}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+
+            <FormField label="Type" required>
+              <Select value={value.type} onValueChange={(next) => patch({ type: next })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TOUR_TYPES.map((type) => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+          </div>
+
+          {/* Plain textarea: the rich-text toolbar was struck from the design. */}
+          <FormField
+            label="Description"
+            required
+            hint="Plain text. This appears under the tour title on the public site."
+          >
+            <Textarea
+              rows={6}
+              value={value.description}
+              onChange={(event) => patch({ description: event.target.value })}
+            />
+          </FormField>
+        </div>
+      ),
+    },
+    {
+      id: 'pricing',
+      label: 'Pricing',
+      title: 'Pricing & tickets',
+      description: 'The adult price in each currency, and how many tickets one booking may take.',
+      required: true,
+      complete: Boolean(value.priceEur && value.priceUsd && value.maxTicketsPerTour),
+      render: () => (
+        <div className="flex flex-col gap-5">
+          <div className="grid gap-5 sm:grid-cols-2">
+            <FormField label="Adult Price (EUR)" required>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={value.priceEur}
+                onChange={(event) => patch({ priceEur: event.target.value })}
+              />
+            </FormField>
+
+            <FormField label="Adult Price (USD)" required>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={value.priceUsd}
+                onChange={(event) => patch({ priceUsd: event.target.value })}
+              />
+            </FormField>
+          </div>
+
+          {/* Renamed per the mark-up: "per Booking" → "per Tour". */}
+          <FormField
+            label="Max Tickets per Tour"
+            hint="Maximum number of adult tickets a user can book for this tour."
+          >
+            <Input
+              type="number"
+              min="1"
+              value={value.maxTicketsPerTour}
+              onChange={(event) => patch({ maxTicketsPerTour: event.target.value })}
+            />
+          </FormField>
+
+          <p className="text-muted-foreground text-xs">
+            The two prices are entered independently — they are not converted at a rate.
+          </p>
+        </div>
+      ),
+    },
+    {
+      id: 'lists',
+      label: 'Highlights',
+      title: 'Highlights & inclusions',
+      description: 'The bullet lists shown down the tour page. All optional.',
+      complete: [...value.highlights, ...value.included, ...value.goodToKnow].some((entry) =>
+        entry.trim(),
+      ),
+      render: () => (
+        <div className="flex flex-col gap-6">
+          <SortableTextList
+            legend="Highlights"
+            items={value.highlights}
+            onChange={(items) => patch({ highlights: items })}
+            addLabel="Add Highlight"
+          />
+          <SortableTextList
+            legend="What's Included"
+            items={value.included}
+            onChange={(items) => patch({ included: items })}
+            addLabel="Add Item"
+          />
+          <SortableTextList
+            legend="Good to Know"
+            items={value.goodToKnow}
+            onChange={(items) => patch({ goodToKnow: items })}
+            addLabel="Add Item"
+          />
+        </div>
+      ),
+    },
+    {
+      id: 'plans',
+      label: 'Itinerary',
+      title: 'Itinerary',
+      description: 'The step-by-step plan, in the order travellers will read it. Optional.',
+      complete: value.plans.some((plan) => plan.title.trim()),
+      render: () => (
+        <div className="flex flex-col gap-4">
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              leadingIcon={<Plus aria-hidden />}
+              onClick={() => patch({ plans: [...value.plans, { title: '', description: '' }] })}
+            >
+              Add Plan
+            </Button>
+          </div>
+
+          {value.plans.length === 0 ? (
+            <p className="text-muted-foreground rounded-field border-border border border-dashed p-6 text-center text-sm">
+              No itinerary steps yet. Add one to describe how the tour runs.
+            </p>
+          ) : (
+            <ol className="flex flex-col gap-3">
+              {value.plans.map((plan, index) => (
+                <li key={index} className="rounded-field border-border flex gap-3 border p-3">
+                  <span className="bg-brand-gradient text-primary-foreground flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold">
+                    {index + 1}
+                  </span>
+
+                  <div className="flex min-w-0 flex-1 flex-col gap-2">
+                    <Input
+                      value={plan.title}
+                      placeholder="Step title"
+                      aria-label={`Plan ${index + 1} title`}
+                      className="h-9"
+                      onChange={(event) => {
+                        const next = [...value.plans];
+                        next[index] = { ...plan, title: event.target.value };
+                        patch({ plans: next });
+                      }}
+                    />
+                    <Textarea
+                      rows={2}
+                      value={plan.description}
+                      placeholder="What happens in this step?"
+                      aria-label={`Plan ${index + 1} description`}
+                      onChange={(event) => {
+                        const next = [...value.plans];
+                        next[index] = { ...plan, description: event.target.value };
+                        patch({ plans: next });
+                      }}
+                    />
+                  </div>
+
+                  {/*
+                    Reordering by button rather than drag: the position is what
+                    the public itinerary renders in, and arrows work with a
+                    keyboard and a screen reader, which a drag handle alone
+                    does not.
+                  */}
+                  <div className="flex shrink-0 flex-col gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8"
+                      aria-label={`Move plan ${index + 1} up`}
+                      disabled={index === 0}
+                      onClick={() => patch({ plans: movePlan(value.plans, index, -1) })}
+                    >
+                      <ChevronUp aria-hidden />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8"
+                      aria-label={`Move plan ${index + 1} down`}
+                      disabled={index === value.plans.length - 1}
+                      onClick={() => patch({ plans: movePlan(value.plans, index, 1) })}
+                    >
+                      <ChevronDown aria-hidden />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="text-danger hover:bg-danger-soft size-8"
+                      aria-label={`Delete plan ${index + 1}`}
+                      onClick={() => patch({ plans: value.plans.filter((_, i) => i !== index) })}
+                    >
+                      <Trash2 aria-hidden />
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+
+          <p className="text-muted-foreground text-xs">
+            Plans run in the order shown. Reorder with the arrows.
+          </p>
+        </div>
+      ),
+    },
+    {
+      id: 'meeting',
+      label: 'Meeting point',
+      title: 'Meeting point',
+      description: 'Where travellers gather before the tour starts. Optional.',
+      complete: Boolean(value.meetingPointTitle.trim()),
+      render: () => (
+        <div className="flex flex-col gap-5">
+          <FormField label="Title">
+            <Input
+              value={value.meetingPointTitle}
+              onChange={(event) => patch({ meetingPointTitle: event.target.value })}
+            />
+          </FormField>
+          <FormField label="Description / Address">
+            <Input
+              value={value.meetingPointAddress}
+              onChange={(event) => patch({ meetingPointAddress: event.target.value })}
+            />
+          </FormField>
+        </div>
+      ),
+    },
+    {
+      id: 'gallery',
+      label: 'Photos',
+      title: 'Photos',
+      description:
+        mode === 'create'
+          ? 'The gallery shown on the tour page. Pick them now — they attach when you create the tour.'
+          : 'The gallery shown on the tour page. The first photo is the cover.',
+      complete: value.gallery.length > 0,
+      render: () => (
+        <TourGalleryPanel
+          tourId={value.id}
+          gallery={value.gallery}
+          onChange={(gallery) => patch({ gallery })}
+          flushRef={flushGallery}
+        />
+      ),
+    },
+  ];
+
+  /**
+   * Departures only exist once the tour does — a departure is a row pointing at
+   * a tour id. Rather than show the step greyed out with no explanation, the
+   * wizard simply does not include it while creating; saving lands on the edit
+   * page, where it is the last step.
+   */
+  if (value.id) {
+    steps.push({
+      id: 'slots',
+      label: 'Departures',
+      title: 'Departures',
+      description: 'The dates and times this tour runs, and how many seats each one holds.',
+      complete: true,
+      render: () => <TourSlotsPanel tourId={value.id} />,
     });
   }
 
-  const SaveButton = ({ region }: { region: string }) => (
-    <Button
-      type="button"
-      size="sm"
-      isLoading={save.isPending && savedRegion === region}
-      onClick={() => saveRegion(region)}
-    >
-      {savedRegion === region && save.isSuccess ? 'Saved' : 'Save Changes'}
-    </Button>
-  );
+  const current = steps[Math.min(step, steps.length - 1)];
+  const isLast = step >= steps.length - 1;
+  const blocked = Boolean(current?.required && !current.complete);
+  const requiredOutstanding = steps.filter((entry) => entry.required && !entry.complete);
+  const canSave = requiredOutstanding.length === 0;
 
-  /**
-   * Every section's Save sits at the foot of that section, after the fields it
-   * writes, rather than in the heading above them. A heading button reads as
-   * part of the title and is easy to press before finishing the last field.
-   */
-  const SaveFooter = ({ region, hint }: { region: string; hint?: string }) => (
-    <div className="border-border mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-      <p className="text-muted-foreground text-xs">{hint ?? ''}</p>
-      <SaveButton region={region} />
-    </div>
-  );
+  function goTo(index: number) {
+    const next = Math.min(Math.max(index, 0), steps.length - 1);
+    setStep(next);
+    setFurthest((reached) => Math.max(reached, next));
+    // Move focus to the new step's heading; without it a keyboard or screen
+    // reader user presses Next and stays where they were.
+    requestAnimationFrame(() => headingRef.current?.focus());
+  }
+
+  if (!current) return null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -225,360 +581,128 @@ export function TourEditor({
           <Link href="/tours">Back to Tours</Link>
         </Button>
 
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight">
-            {mode === 'create' ? 'New Tour' : value.title}
-          </h1>
-          <StatusPill status={value.published ? 'PUBLISHED' : 'DRAFT'} />
-        </div>
+        <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-3xl font-semibold tracking-tight">
+                {mode === 'create' ? 'New Tour' : value.title || 'Untitled tour'}
+              </h1>
+              <StatusPill status={value.published ? 'PUBLISHED' : 'DRAFT'} />
+            </div>
 
-        {mode === 'edit' ? (
-          <p className="text-muted-foreground mt-1 text-sm">
-            Tour ID: #{value.id} • Created on {formatDate(value.createdAt ?? '')} • Last updated{' '}
-            {formatDate(value.updatedAt ?? '')}
-          </p>
-        ) : null}
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-        {/* ---------------- left column ---------------- */}
-        <div className="flex flex-col gap-6">
-          <Card>
-            <CardContent className="p-6">
-              <h2 className="mb-5 text-lg font-semibold">Basic Information</h2>
-
-              <div className="grid gap-5 sm:grid-cols-2">
-                <FormField label="Title" required>
-                  <Input
-                    value={value.title}
-                    onChange={(event) => patch({ title: event.target.value })}
-                  />
-                </FormField>
-
-                <FormField label="Duration (in hours)" required>
-                  <Input
-                    type="number"
-                    min="0.5"
-                    step="0.5"
-                    value={value.durationHours}
-                    onChange={(event) => patch({ durationHours: event.target.value })}
-                  />
-                </FormField>
-
-                <FormField label="Location" required>
-                  <Select
-                    value={value.location}
-                    onValueChange={(next) => patch({ location: next })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choose a location" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {locations.map((entry) => (
-                        <SelectItem key={entry} value={entry}>
-                          {entry}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </FormField>
-
-                <FormField label="Type" required>
-                  <Select value={value.type} onValueChange={(next) => patch({ type: next })}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choose a type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TOUR_TYPES.map((type) => (
-                        <SelectItem key={type.value} value={type.value}>
-                          {type.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </FormField>
-              </div>
-
-              {/* Plain textarea: the rich-text toolbar was struck from the design. */}
-              <FormField
-                className="mt-5"
-                label="Description"
-                required
-                hint="Plain text. This appears under the tour title on the public site."
-              >
-                <Textarea
-                  rows={5}
-                  value={value.description}
-                  onChange={(event) => patch({ description: event.target.value })}
-                />
-              </FormField>
-
-              <SaveFooter region="basic" />
-            </CardContent>
-          </Card>
-
-          {/*
-            The design places the three lists directly under Basic Information,
-            each in its own card, with one Save for the group.
-
-            Three across only once the column is genuinely wide. This sits in
-            the 1.5fr half of the page, so at `lg` each card was ~200px and the
-            row's fixed grip and buttons left the text field about 30px — the
-            list looked like three empty boxes. Below `2xl` they stack and get
-            the full column instead.
-          */}
-          <div className="grid gap-6 2xl:grid-cols-3">
-            {[
-              {
-                legend: 'Highlights',
-                items: value.highlights,
-                onChange: (items: string[]) => patch({ highlights: items }),
-                addLabel: 'Add Highlight',
-              },
-              {
-                legend: "What's Included",
-                items: value.included,
-                onChange: (items: string[]) => patch({ included: items }),
-                addLabel: 'Add Item',
-              },
-              {
-                legend: 'Good to Know',
-                items: value.goodToKnow,
-                onChange: (items: string[]) => patch({ goodToKnow: items }),
-                addLabel: 'Add Item',
-              },
-            ].map((list) => (
-              <Card key={list.legend}>
-                <CardContent className="p-5">
-                  <SortableTextList {...list} />
-                </CardContent>
-              </Card>
-            ))}
+            {mode === 'edit' ? (
+              <p className="text-muted-foreground mt-1 text-sm">
+                Tour ID: #{value.id} • Created on {formatDate(value.createdAt ?? '')} • Last updated{' '}
+                {formatDate(value.updatedAt ?? '')}
+              </p>
+            ) : null}
           </div>
 
-          {/* The design gives these three cards no Save of their own, but edits
-              have to reach the server somehow, so one button covers the group. */}
-          <div className="flex justify-end">
-            <SaveButton region="lists" />
-          </div>
-
-          <TourGalleryPanel
-            tourId={value.id}
-            gallery={value.gallery}
-            onChange={(gallery) => patch({ gallery })}
-          />
-
-          <TourSlotsPanel tourId={value.id} />
-        </div>
-
-        {/* ---------------- right column ---------------- */}
-        <div className="flex flex-col gap-6">
-          <Card>
-            <CardContent className="p-6">
-              <h2 className="mb-5 text-lg font-semibold">Tickets &amp; Pricing</h2>
-
-              <div className="grid gap-5 sm:grid-cols-2">
-                <FormField label="Adult Price (USD)" required>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={value.priceUsd}
-                    onChange={(event) => patch({ priceUsd: event.target.value })}
-                  />
-                </FormField>
-
-                <FormField label="Adult Price (EUR)" required>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={value.priceEur}
-                    onChange={(event) => patch({ priceEur: event.target.value })}
-                  />
-                </FormField>
-              </div>
-
-              {/* Renamed per the mark-up: "per Booking" → "per Tour". */}
-              <FormField
-                className="mt-5"
-                label="Max Tickets per Tour"
-                hint="Maximum number of adult tickets a user can book for this tour."
-              >
-                <Input
-                  type="number"
-                  min="1"
-                  value={value.maxTicketsPerTour}
-                  onChange={(event) => patch({ maxTicketsPerTour: event.target.value })}
-                />
-              </FormField>
-
-              <SaveFooter region="pricing" />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold">
-                  Tour Plans{' '}
-                  <span className="text-muted-foreground text-sm font-normal">
-                    (Itinerary / Plan Items)
-                  </span>
-                </h2>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  leadingIcon={<Plus aria-hidden />}
-                  onClick={() => patch({ plans: [...value.plans, { title: '', description: '' }] })}
-                >
-                  Add Plan
-                </Button>
-              </div>
-
-              {value.plans.length === 0 ? (
-                <p className="text-muted-foreground rounded-field border-border border border-dashed p-6 text-center text-sm">
-                  No itinerary steps yet. Add one to describe how the tour runs.
-                </p>
-              ) : (
-                <ol className="flex flex-col gap-3">
-                  {value.plans.map((plan, index) => (
-                    <li key={index} className="rounded-field border-border flex gap-3 border p-3">
-                      <span className="bg-brand-gradient text-primary-foreground flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold">
-                        {index + 1}
-                      </span>
-
-                      <div className="flex min-w-0 flex-1 flex-col gap-2">
-                        <Input
-                          value={plan.title}
-                          placeholder="Step title"
-                          aria-label={`Plan ${index + 1} title`}
-                          className="h-9"
-                          onChange={(event) => {
-                            const next = [...value.plans];
-                            next[index] = { ...plan, title: event.target.value };
-                            patch({ plans: next });
-                          }}
-                        />
-                        <Textarea
-                          rows={2}
-                          value={plan.description}
-                          placeholder="What happens in this step?"
-                          aria-label={`Plan ${index + 1} description`}
-                          onChange={(event) => {
-                            const next = [...value.plans];
-                            next[index] = { ...plan, description: event.target.value };
-                            patch({ plans: next });
-                          }}
-                        />
-                      </div>
-
-                      {/*
-                        Reordering by button rather than drag: the position is
-                        what the public itinerary renders in, and arrows work
-                        with a keyboard and a screen reader, which a drag handle
-                        alone does not.
-                      */}
-                      <div className="flex shrink-0 flex-col gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-8"
-                          aria-label={`Move plan ${index + 1} up`}
-                          disabled={index === 0}
-                          onClick={() => patch({ plans: movePlan(value.plans, index, -1) })}
-                        >
-                          <ChevronUp aria-hidden />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-8"
-                          aria-label={`Move plan ${index + 1} down`}
-                          disabled={index === value.plans.length - 1}
-                          onClick={() => patch({ plans: movePlan(value.plans, index, 1) })}
-                        >
-                          <ChevronDown aria-hidden />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="text-danger hover:bg-danger-soft size-8"
-                          aria-label={`Delete plan ${index + 1}`}
-                          onClick={() =>
-                            patch({ plans: value.plans.filter((_, i) => i !== index) })
-                          }
-                        >
-                          <Trash2 aria-hidden />
-                        </Button>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              )}
-
-              <SaveFooter
-                region="plans"
-                hint="Plans run in the order shown. Reorder with the arrows."
+          <div className="flex items-center gap-4">
+            {/* One control, so it sits in the header rather than in a card of
+                its own. It decides what the pill beside the title says. */}
+            <label className="flex items-center gap-2.5">
+              <Switch
+                checked={value.published}
+                onCheckedChange={(checked) => patch({ published: checked })}
               />
-            </CardContent>
-          </Card>
+              <span className="text-sm font-medium">{value.published ? 'Published' : 'Draft'}</span>
+            </label>
 
-          <Card>
-            <CardContent className="p-6">
-              <h2 className="mb-5 text-lg font-semibold">Meeting Point</h2>
-
-              <div className="flex flex-col gap-5">
-                <FormField label="Title">
-                  <Input
-                    value={value.meetingPointTitle}
-                    onChange={(event) => patch({ meetingPointTitle: event.target.value })}
-                  />
-                </FormField>
-                <FormField label="Description / Address">
-                  <Input
-                    value={value.meetingPointAddress}
-                    onChange={(event) => patch({ meetingPointAddress: event.target.value })}
-                  />
-                </FormField>
-              </div>
-
-              <SaveFooter region="meeting" />
-            </CardContent>
-          </Card>
-
-          {/* The "Created By" card that sat beside this was struck from the design. */}
-          <Card>
-            <CardContent className="p-6">
-              {/*
-                This card needs a Save of its own like every other region. The
-                toggle repaints the header pill the instant it is flipped, so
-                without one an editor sets a tour to Published, sees it say
-                Published, leaves, and the tour is still a draft — the switch
-                only ever reached the server if they happened to press Save in
-                an unrelated card.
-              */}
-              <h2 className="mb-4 text-lg font-semibold">Tour Status</h2>
-
-              <label className="flex items-center gap-3">
-                <Switch
-                  checked={value.published}
-                  onCheckedChange={(checked) => patch({ published: checked })}
-                />
-                <span className="text-sm font-medium">
-                  {value.published ? 'Published' : 'Draft'}
-                </span>
-              </label>
-
-              <SaveFooter region="status" hint="Unpublished tours are hidden from the website." />
-            </CardContent>
-          </Card>
+            {/* Editing an existing tour should not require walking to the last
+                step to save one changed field. Creating one does — the final
+                step is where Create lives. */}
+            {mode === 'edit' ? (
+              <Button
+                leadingIcon={<Save aria-hidden />}
+                isLoading={save.isPending}
+                disabled={!canSave}
+                title={canSave ? undefined : 'Complete the required steps first'}
+                onClick={() => save.mutate(toPayload())}
+              >
+                Save Tour
+              </Button>
+            ) : null}
+          </div>
         </div>
       </div>
+
+      <TourStepRail
+        steps={steps.map((entry) => ({
+          id: entry.id,
+          label: entry.label,
+          required: entry.required,
+          complete: entry.complete,
+        }))}
+        current={step}
+        furthest={furthest}
+        // Nothing is left to sequence on a tour that already exists.
+        unlockAll={mode === 'edit'}
+        onSelect={goTo}
+      />
+
+      <Card>
+        <CardContent className="p-6">
+          <p className="text-muted-foreground text-sm">
+            Step {step + 1} of {steps.length}
+          </p>
+          <h2 ref={headingRef} tabIndex={-1} className="mt-1 text-xl font-semibold outline-none">
+            {current.title}
+          </h2>
+          <p className="text-muted-foreground mb-6 mt-1 text-sm">{current.description}</p>
+
+          {current.render()}
+        </CardContent>
+      </Card>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Button
+          variant="outline"
+          disabled={step === 0}
+          leadingIcon={<ArrowLeft aria-hidden />}
+          onClick={() => goTo(step - 1)}
+        >
+          Back
+        </Button>
+
+        <div className="flex items-center gap-3">
+          {blocked ? (
+            <p className="text-muted-foreground text-xs" role="status">
+              Fill in the required fields to continue.
+            </p>
+          ) : null}
+
+          {isLast ? (
+            mode === 'create' ? (
+              <Button
+                leadingIcon={<Save aria-hidden />}
+                isLoading={save.isPending}
+                disabled={!canSave}
+                title={
+                  canSave
+                    ? undefined
+                    : `Complete ${requiredOutstanding.map((entry) => entry.label).join(' and ')} first`
+                }
+                onClick={() => save.mutate(toPayload())}
+              >
+                Create Tour
+              </Button>
+            ) : null
+          ) : (
+            <Button disabled={blocked} onClick={() => goTo(step + 1)}>
+              Next
+              <ArrowRight className="ml-1.5 size-4" aria-hidden />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <p className="text-muted-foreground text-xs">
+        Unpublished tours are hidden from the website.
+        {mode === 'create'
+          ? ' Nothing is written until you press Create Tour.'
+          : ' Photos and departures save as you edit them; everything else saves with the button above.'}
+      </p>
     </div>
   );
 }

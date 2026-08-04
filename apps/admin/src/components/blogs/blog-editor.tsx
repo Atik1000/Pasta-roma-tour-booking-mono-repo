@@ -23,7 +23,6 @@ import {
 import { isApiClientError, type SaveBlogPayload } from '@pasta/api-client';
 import { slugify, wordCount } from '@pasta/utils';
 import { useMutation } from '@tanstack/react-query';
-import { env } from '@/lib/env';
 import { adminApi } from '@/lib/session';
 import { ACCEPT_ATTRIBUTE, useStagedImages } from '@/lib/staged-images';
 
@@ -86,11 +85,52 @@ export function BlogEditor({
 
   const toast = useToast();
 
+  const contentRef = React.useRef<HTMLTextAreaElement>(null);
+
+  const coverInputRef = React.useRef<HTMLInputElement>(null);
+  const [coverError, setCoverError] = React.useState<string | null>(null);
+  const {
+    staged: stagedCovers,
+    rejected: coverRejected,
+    add: addCover,
+    clear: clearCover,
+  } = useStagedImages();
+  const pendingCover = stagedCovers[0];
+
   const save = useMutation({
-    mutationFn: (payload: SaveBlogPayload) =>
-      value.id ? adminApi.admin.updateBlog(value.id, payload) : adminApi.admin.createBlog(payload),
+    mutationFn: async (payload: SaveBlogPayload) => {
+      /**
+       * A picked-but-not-uploaded image is still the image the author chose.
+       *
+       * Choosing one only stages it, and the upload needed a separate button
+       * press. Pressing Save instead threw the file away without a word: the
+       * post saved successfully with no featured image, which is why posts
+       * written here had none while every seeded post did. Saving is a
+       * commitment, so the file goes up first and the URL it returns is what
+       * gets stored. Staging still does its job — nothing reaches the server
+       * until the author commits to it.
+       */
+      const uploaded = pendingCover
+        ? (await adminApi.admin.uploadImage(pendingCover.file)).url
+        : null;
+
+      const body = uploaded ? { ...payload, coverImage: uploaded } : payload;
+      const result = value.id
+        ? await adminApi.admin.updateBlog(value.id, body)
+        : await adminApi.admin.createBlog(body);
+
+      return { ...result, uploaded };
+    },
     onSuccess: (result) => {
       setError(null);
+
+      // The staged file is stored now, so show it as the cover and stop
+      // offering an upload for something already uploaded.
+      if (result.uploaded) {
+        patch({ coverImage: result.uploaded });
+        clearCover();
+      }
+
       toast.success(
         value.id ? 'Post saved' : 'Post created',
         value.status === 'PUBLISHED' ? 'It is live on the site.' : 'Saved as a draft.',
@@ -105,17 +145,6 @@ export function BlogEditor({
       toast.error('Post not saved', message);
     },
   });
-  const contentRef = React.useRef<HTMLTextAreaElement>(null);
-
-  const coverInputRef = React.useRef<HTMLInputElement>(null);
-  const [coverError, setCoverError] = React.useState<string | null>(null);
-  const {
-    staged: stagedCovers,
-    rejected: coverRejected,
-    add: addCover,
-    clear: clearCover,
-  } = useStagedImages();
-  const pendingCover = stagedCovers[0];
 
   const uploadCover = useMutation({
     mutationFn: (file: File) => adminApi.admin.uploadImage(file),
@@ -195,20 +224,23 @@ export function BlogEditor({
 
         <div className="flex items-center gap-3">
           {/*
-            Previews the post on the public site. A post that has never been
-            saved has no URL to open, so the button says so rather than
-            opening a 404.
+            Opens the details screen rather than the live article. A draft has
+            no page on the site — pointing there answered 404 for every post
+            that had not been published yet, which is most of what gets
+            previewed. A post never saved still has nothing to show.
           */}
           <Button
             variant="outline"
+            asChild={Boolean(value.id)}
             leadingIcon={<Eye aria-hidden />}
-            disabled={!value.id || !value.slug}
+            disabled={!value.id}
             title={value.id ? undefined : 'Save the post first'}
-            onClick={() =>
-              window.open(`${env.NEXT_PUBLIC_SITE_URL}/blog/${value.slug}`, '_blank', 'noopener')
-            }
           >
-            Preview
+            {value.id ? (
+              <Link href={`/blogs/${value.id}/preview`}>Preview</Link>
+            ) : (
+              <span>Preview</span>
+            )}
           </Button>
           <Button
             leadingIcon={<Save aria-hidden />}
@@ -219,7 +251,9 @@ export function BlogEditor({
                 slug: value.slug || undefined,
                 content: value.content,
                 status: value.status,
-                coverImage: value.coverImage ?? undefined,
+                // `null`, not `undefined` — removing the featured image has to
+                // reach the API as a clear, not as an omitted field.
+                coverImage: value.coverImage,
                 categories: value.categories,
                 metaTitle: value.metaTitle || undefined,
                 metaDescription: value.metaDescription || undefined,
@@ -347,26 +381,31 @@ export function BlogEditor({
                   ) : null}
 
                   {pendingCover ? (
-                    <div className="mt-1 flex flex-wrap items-center gap-2.5">
-                      <Button
-                        type="button"
-                        size="sm"
-                        isLoading={uploadCover.isPending}
-                        leadingIcon={<Upload aria-hidden />}
-                        onClick={() => uploadCover.mutate(pendingCover.file)}
-                      >
-                        {uploadCover.isPending ? 'Uploading…' : 'Upload Image'}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={uploadCover.isPending}
-                        onClick={clearCover}
-                      >
-                        Discard
-                      </Button>
-                    </div>
+                    <>
+                      <div className="mt-1 flex flex-wrap items-center gap-2.5">
+                        <Button
+                          type="button"
+                          size="sm"
+                          isLoading={uploadCover.isPending}
+                          leadingIcon={<Upload aria-hidden />}
+                          onClick={() => uploadCover.mutate(pendingCover.file)}
+                        >
+                          {uploadCover.isPending ? 'Uploading…' : 'Upload Image'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={uploadCover.isPending}
+                          onClick={clearCover}
+                        >
+                          Discard
+                        </Button>
+                      </div>
+                      <p className="text-muted-foreground text-xs">
+                        Saving the post uploads this image too — the button above just does it now.
+                      </p>
+                    </>
                   ) : null}
                 </div>
               </div>

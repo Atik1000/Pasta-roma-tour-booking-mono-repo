@@ -27,10 +27,17 @@ export function TourGalleryPanel({
   tourId,
   gallery,
   onChange,
+  flushRef,
 }: {
   tourId?: string;
   gallery: string[];
   onChange: (next: string[]) => void;
+  /**
+   * Filled with a function that uploads whatever is still staged and resolves
+   * to the resulting gallery, so pressing Save on the tour commits the photos
+   * the operator has chosen instead of discarding them. See `flush` below.
+   */
+  flushRef?: React.MutableRefObject<(() => Promise<string[]>) | null>;
 }) {
   const toast = useToast();
 
@@ -84,6 +91,47 @@ export function TourGalleryPanel({
       toast.error('Gallery not saved', message);
     },
   });
+
+  /**
+   * Uploads anything still staged and returns the gallery that results.
+   *
+   * A photo chosen but not uploaded is still the photo the operator picked.
+   * Choosing one only staged it — the upload needed a separate button press —
+   * and pressing Save instead threw the file away without a word, so the tour
+   * saved with no gallery at all and the pictures looked like they had never
+   * been stored. Saving is a commitment, so the files go up first. Staging
+   * still does its job: nothing reaches the server until Save or Upload.
+   */
+  const flush = React.useCallback(async (): Promise<string[]> => {
+    if (staged.length === 0) return gallery;
+
+    const urls: string[] = [];
+    // Sequential, so the gallery order matches the order they were picked.
+    for (const item of staged) {
+      urls.push((await adminApi.admin.uploadImage(item.file)).url);
+    }
+
+    const next = [...gallery, ...urls];
+    clear();
+    onChange(next);
+
+    // A tour that does not exist yet has nothing to attach them to; the editor
+    // writes the list once it has created the record.
+    if (tourId) {
+      await adminApi.admin.setTourImages(tourId, next);
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'tours'] });
+    }
+
+    return next;
+  }, [staged, gallery, clear, onChange, tourId, queryClient]);
+
+  React.useEffect(() => {
+    if (!flushRef) return;
+    flushRef.current = flush;
+    return () => {
+      flushRef.current = null;
+    };
+  }, [flush, flushRef]);
 
   function remove(index: number) {
     const next = gallery.filter((_, position) => position !== index);
@@ -167,7 +215,8 @@ export function TourGalleryPanel({
               {staged.length === 1 ? '1 photo ready to upload' : `${staged.length} photos ready`}
             </h3>
             <p className="text-muted-foreground mt-0.5 text-xs">
-              Nothing has been sent yet. Check them, then upload.
+              Nothing has been sent yet. Check them, then upload — saving the tour uploads them too,
+              so the button below just does it now.
             </p>
 
             <ul className="mt-3 flex flex-wrap gap-3">
