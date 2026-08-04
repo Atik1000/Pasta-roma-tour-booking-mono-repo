@@ -729,8 +729,13 @@ export class AdminService {
           }
         : {}),
       ...(query.status && query.status !== 'ALL' ? { status: query.status } : {}),
-      ...(query.method && query.method !== 'ALL' && query.method !== 'PAY_LATER'
-        ? { method: query.method }
+      // Asking for the one method this screen excludes is a request for the
+      // empty set. Dropping the clause instead would quietly widen the filter
+      // to every payment there is — the opposite of what was asked for.
+      ...(query.method && query.method !== 'ALL'
+        ? query.method === 'PAY_LATER'
+          ? { method: { in: [] } }
+          : { method: query.method }
         : {}),
       // Ranged on the capture date, which is the column the table shows.
       ...dateRangeOn('paidAt', query.from, query.to),
