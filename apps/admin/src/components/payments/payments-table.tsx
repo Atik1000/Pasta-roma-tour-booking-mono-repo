@@ -259,10 +259,13 @@ export function PaymentsTable() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">All Methods</SelectItem>
+                {/* Cash leads — it is what the checkout offers besides a card.
+                    Pay Later is absent on purpose: no money has moved, so those
+                    bookings never appear on this screen at all. */}
+                <SelectItem value="CASH">Cash</SelectItem>
                 <SelectItem value="CARD">Card</SelectItem>
                 <SelectItem value="PAYPAL">PayPal</SelectItem>
                 <SelectItem value="APPLE_PAY">Apple Pay</SelectItem>
-                <SelectItem value="CASH">Cash</SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -446,13 +446,36 @@ export class AdminWriteService {
 
   // --- bookings --------------------------------------------------------------
 
+  /**
+   * Edits a booking's customer details and status.
+   *
+   * The status select here is a second route to CANCELLED alongside the Cancel
+   * Booking button, and it has to move inventory the same way that one does.
+   * It did not: cancelling from the select stamped the status and left `booked`
+   * untouched, so the departure stayed sold out with nobody on it — no further
+   * booking for that time could be taken, and nothing about the tour said why.
+   *
+   * Reinstating is the same rule read backwards. The seats were handed back
+   * when the booking was cancelled, so they have to be claimed again — and
+   * claimed under the capacity check, because someone else may have taken them
+   * in the meantime.
+   */
   async updateBooking(reference: string, dto: UpdateBookingDto): Promise<void> {
     const booking = await this.prisma.booking.findFirst({
       where: { reference, deletedAt: null },
-      select: { id: true, customerId: true, status: true },
+      select: {
+        id: true,
+        customerId: true,
+        status: true,
+        items: { select: { slotId: true, quantity: true, tourTitle: true } },
+      },
     });
 
     if (!booking) throw new NotFoundException('That booking could not be found.');
+
+    const changingStatus = dto.status !== undefined && dto.status !== booking.status;
+    const releasing = changingStatus && dto.status === 'CANCELLED';
+    const reinstating = changingStatus && booking.status === 'CANCELLED';
 
     await this.prisma.$transaction(async (tx) => {
       if (dto.fullName !== undefined || dto.email !== undefined) {
@@ -465,7 +488,37 @@ export class AdminWriteService {
         });
       }
 
-      if (dto.status !== undefined && dto.status !== booking.status) {
+      if (releasing) {
+        for (const item of booking.items) {
+          await tx.tourSlot.update({
+            where: { id: item.slotId },
+            data: { booked: { decrement: item.quantity } },
+          });
+        }
+      }
+
+      if (reinstating) {
+        for (const item of booking.items) {
+          // The same guarded claim checkout uses: zero rows affected means the
+          // seats are gone, and the whole edit rolls back rather than pushing
+          // the departure past its capacity.
+          const claimed = await tx.$executeRaw`
+            UPDATE "tour_slots"
+            SET "booked" = "booked" + ${item.quantity}, "updatedAt" = NOW()
+            WHERE "id" = ${item.slotId}::uuid
+              AND "booked" + ${item.quantity} <= "capacity"
+          `;
+
+          if (claimed === 0) {
+            throw new BusinessException(
+              BusinessErrorCode.SlotSoldOut,
+              `${item.tourTitle} no longer has ${item.quantity} seats on that departure, so this booking cannot be reinstated.`,
+            );
+          }
+        }
+      }
+
+      if (changingStatus) {
         await tx.booking.update({
           where: { id: booking.id },
           data: {
@@ -533,9 +586,16 @@ export class AdminWriteService {
    * exports and the revenue figures all claim money that never moved — with no
    * way afterwards to tell which number was the real one.
    *
-   * The booking's payment status is recomputed from the amount rather than sent
-   * by the client, so a part-payment cannot be filed as settled in full. Every
-   * change is written to the activity log with the previous values.
+   * The status is the operator's when they send one and derived from the amount
+   * when they do not — deriving it alone could only ever produce PENDING or
+   * PAID, so a declined card or a refund handed back in cash had no way of
+   * being recorded. Every change is written to the activity log with the
+   * previous values.
+   *
+   * Pay Later is the exception that overrides all of it: no money has moved, so
+   * the amount, the receipt number and the payment date are cleared and the
+   * record sits PENDING until it is actually settled. Leaving a stale amount on
+   * one would put money in the revenue figures that nobody has collected.
    */
   async updatePayment(paymentId: string, dto: UpdatePaymentDto, actorId: string): Promise<void> {
     const payment = await this.prisma.payment.findUnique({
@@ -552,25 +612,52 @@ export class AdminWriteService {
       );
     }
 
-    const amountMinor = dto.amountMinor ?? payment.amount;
-    const paidAt = dto.paidAt ? new Date(dto.paidAt) : payment.paidAt;
+    const method = dto.method ?? payment.method;
+    const payLater = method === 'PAY_LATER';
 
-    // Derived, never taken from the client: an amount short of the booking total
-    // is still outstanding no matter what the form said.
-    const status =
-      amountMinor <= 0 ? 'PENDING' : amountMinor >= payment.booking.total ? 'PAID' : 'PENDING';
+    const amountMinor = payLater ? 0 : (dto.amountMinor ?? payment.amount);
+    const requestedPaidAt = dto.paidAt ? new Date(dto.paidAt) : payment.paidAt;
+
+    // Derived only as the fallback: an amount short of the booking total is
+    // still outstanding unless someone says otherwise on purpose.
+    const derived =
+      amountMinor > 0 && amountMinor >= payment.booking.total
+        ? ('PAID' as const)
+        : ('PENDING' as const);
+
+    const status = payLater ? 'PENDING' : (dto.status ?? derived);
+
+    // Only a payment that was actually taken carries a date, and one filed as
+    // paid without one is stamped now rather than left reading "not yet". A
+    // refund keeps the date the money originally arrived — that it was later
+    // returned does not mean it never came in.
+    const paidAt =
+      status === 'PAID'
+        ? (requestedPaidAt ?? new Date())
+        : status === 'REFUNDED'
+          ? requestedPaidAt
+          : null;
+
+    const transactionId = payLater
+      ? null
+      : dto.transactionId !== undefined
+        ? dto.transactionId.trim() || null
+        : payment.transactionId;
 
     await this.prisma.$transaction([
       this.prisma.payment.update({
         where: { id: paymentId },
         data: {
-          ...(dto.method !== undefined ? { method: dto.method } : {}),
-          ...(dto.transactionId !== undefined
-            ? { transactionId: dto.transactionId.trim() || null }
-            : {}),
+          method,
+          transactionId,
           amount: amountMinor,
-          paidAt: status === 'PAID' ? (paidAt ?? new Date()) : null,
+          paidAt,
           status,
+          // A refund recorded by hand still has to say how much went back, or
+          // the refunded totals on the Payments screen stay at zero.
+          ...(status === 'REFUNDED'
+            ? { refundedAt: payment.refundedAt ?? new Date(), refundedAmount: amountMinor }
+            : {}),
         },
       }),
       this.prisma.booking.update({
@@ -593,10 +680,10 @@ export class AdminWriteService {
               status: payment.status,
             },
             after: {
-              method: dto.method ?? payment.method,
-              transactionId: dto.transactionId ?? payment.transactionId,
+              method,
+              transactionId,
               amountMinor,
-              paidAt: status === 'PAID' ? (paidAt ?? new Date()).toISOString() : null,
+              paidAt: paidAt?.toISOString() ?? null,
               status,
             },
           },

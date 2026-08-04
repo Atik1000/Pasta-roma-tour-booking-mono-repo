@@ -29,7 +29,6 @@ import {
   Mail,
   MapPin,
   MessageSquare,
-  Download,
   Plus,
   Printer,
   Settings,
@@ -45,7 +44,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AddBookingItemDialog } from '@/components/bookings/add-booking-item-dialog';
 import { PaymentDetailsPanel } from '@/components/bookings/payment-details-panel';
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
-import { printBlob, saveBlob } from '@/lib/download';
+import { printBlob } from '@/lib/download';
 import { adminApi } from '@/lib/session';
 
 /**
@@ -55,6 +54,7 @@ import { adminApi } from '@/lib/session';
  */
 export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
   const [status, setStatus] = React.useState(booking.status);
+  const [paymentStatus, setPaymentStatus] = React.useState(booking.paymentStatus);
   const [fullName, setFullName] = React.useState(booking.customer.fullName);
   const [email, setEmail] = React.useState(booking.customer.email);
   const [notes, setNotes] = React.useState<string[]>(booking.notes.map((note) => note.body));
@@ -133,16 +133,6 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
     onError: (caught) => documentFailed(caught, 'Could not produce that invoice.'),
   });
 
-  const downloadTickets = useMutation({
-    mutationFn: () => adminApi.admin.ticketsPdf(booking.reference),
-    onSuccess: (pdf) => {
-      setError(null);
-      toast.success('Tickets downloaded');
-      saveBlob(pdf, `${booking.reference}-tickets.pdf`);
-    },
-    onError: (caught) => documentFailed(caught, 'Could not produce those tickets.'),
-  });
-
   const sendConfirmation = useMutation({
     mutationFn: () => adminApi.admin.sendConfirmation(booking.reference),
     onSuccess: (result) => {
@@ -155,6 +145,80 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
     },
     onError: (caught) => documentFailed(caught, 'Could not send that email.'),
   });
+
+  /**
+   * The status dropdown writes on selection.
+   *
+   * It used to be pure local state, saved only if you then went and pressed
+   * Save Changes down in the customer card — so choosing a status appeared to
+   * do nothing, and reloading put the old one back. Nothing on the screen
+   * connected the two, and a status is one field: there is nothing to draft.
+   *
+   * Cancelling releases the seats server-side and cannot be walked back
+   * casually, so that one still goes through the confirmation dialog. The
+   * select rolls back to the stored value if the write fails.
+   */
+  const changeStatus = useMutation({
+    mutationFn: (next: typeof status) =>
+      adminApi.admin.updateBooking(booking.reference, { status: next }),
+    onSuccess: (_result, next) => {
+      setError(null);
+      toast.success('Booking status updated', `This booking is now ${next.toLowerCase()}.`);
+      void refresh();
+    },
+    onError: (caught: unknown) => {
+      setStatus(booking.status);
+      documentFailed(caught, 'Could not change that status.');
+    },
+  });
+
+  function chooseStatus(next: typeof status) {
+    if (next === status) return;
+
+    if (next === 'CANCELLED') {
+      setConfirmCancel(true);
+      return;
+    }
+
+    setStatus(next);
+    changeStatus.mutate(next);
+  }
+
+  /**
+   * Payment status, beside the booking status and writing the same way.
+   *
+   * It lived only as a pill here and as a field buried in the Payment Details
+   * card, which is not where anyone looks for it — the two statuses are read
+   * together at the top of the screen, so they are set together there too.
+   * Correcting the amount, the receipt number or the date is still the panel's
+   * job; this is just the state the booking is filed under.
+   *
+   * Stripe-captured payments stay locked: that record has to keep agreeing with
+   * the money Stripe actually holds. The API refuses those regardless, so the
+   * control says why rather than failing after the fact.
+   */
+  const changePaymentStatus = useMutation({
+    mutationFn: (next: typeof paymentStatus) => {
+      const payment = booking.payment;
+      if (!payment) throw new Error('This booking has no payment record to update.');
+      return adminApi.admin.updatePayment(payment.id, { status: next });
+    },
+    onSuccess: (_result, next) => {
+      setError(null);
+      toast.success('Payment status updated', `This booking is now marked ${next.toLowerCase()}.`);
+      void refresh();
+    },
+    onError: (caught: unknown) => {
+      setPaymentStatus(booking.paymentStatus);
+      documentFailed(caught, 'Could not change that payment status.');
+    },
+  });
+
+  function choosePaymentStatus(next: typeof paymentStatus) {
+    if (next === paymentStatus) return;
+    setPaymentStatus(next);
+    changePaymentStatus.mutate(next);
+  }
 
   const saveCustomer = useMutation({
     mutationFn: () => adminApi.admin.updateBooking(booking.reference, { fullName, email, status }),
@@ -216,35 +280,83 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
             <Link href="/bookings">Back to Bookings</Link>
           </Button>
 
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <h1 className="text-3xl font-semibold tracking-tight">Booking #{booking.reference}</h1>
-            <Select value={status} onValueChange={(next) => setStatus(next as typeof status)}>
-              <SelectTrigger className="h-9 w-40" aria-label="Booking status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="CONFIRMED">Confirmed</SelectItem>
-                <SelectItem value="PENDING">Pending</SelectItem>
-                <SelectItem value="CANCELLED">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight">
+            Booking #{booking.reference}
+          </h1>
 
           <p className="text-muted-foreground mt-1 text-sm">
-            Booked on {formatDateTime(booking.bookedAt)} • Payment Status:{' '}
-            <span className="text-success">{booking.paymentStatus}</span>
+            Booked on {formatDateTime(booking.bookedAt)}
           </p>
+
+          {/*
+            Both statuses, side by side and each writing on selection. The
+            payment one used to be a pill in the line above — the one place on
+            the screen an operator would go looking to change it, and the one
+            place it could not be changed.
+          */}
+          <div className="mt-4 flex flex-wrap items-end gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="booking-status" className="text-muted-foreground text-xs font-medium">
+                Booking Status
+              </label>
+              <Select
+                value={status}
+                disabled={changeStatus.isPending}
+                onValueChange={(next) => chooseStatus(next as typeof status)}
+              >
+                <SelectTrigger id="booking-status" className="h-9 w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CONFIRMED">Confirmed</SelectItem>
+                  <SelectItem value="PENDING">Pending</SelectItem>
+                  <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="booking-payment-status"
+                className="text-muted-foreground text-xs font-medium"
+              >
+                Payment Status
+              </label>
+              {booking.payment?.isManual ? (
+                <Select
+                  value={paymentStatus}
+                  disabled={changePaymentStatus.isPending}
+                  onValueChange={(next) => choosePaymentStatus(next as typeof paymentStatus)}
+                >
+                  <SelectTrigger id="booking-payment-status" className="h-9 w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PAID">Paid</SelectItem>
+                    <SelectItem value="PENDING">Pending</SelectItem>
+                    <SelectItem value="REFUNDED">Refunded</SelectItem>
+                    <SelectItem value="FAILED">Failed</SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                // Locked rather than hidden: an operator who cannot find the
+                // control assumes it is broken, not that it is deliberate.
+                <span
+                  className="flex h-9 items-center"
+                  title={
+                    booking.payment
+                      ? 'Captured by Stripe, so this is its record to keep. Use Refund on the Payments screen.'
+                      : 'No payment has been recorded on this booking yet.'
+                  }
+                >
+                  <StatusPill status={booking.paymentStatus} />
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2.5">
-          <Button
-            variant="outline"
-            leadingIcon={<Download aria-hidden />}
-            isLoading={downloadTickets.isPending}
-            onClick={() => downloadTickets.mutate()}
-          >
-            Download Tickets
-          </Button>
           <Button
             variant="outline"
             leadingIcon={<Printer aria-hidden />}
@@ -600,6 +712,19 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
 
               {booking.payment ? (
                 <PaymentDetailsPanel
+                  // Remounted whenever the stored record changes, so the form
+                  // re-reads it. The panel seeds its fields from these values
+                  // once; without this, setting the status from the header
+                  // above left the panel showing the previous one and offering
+                  // to save it back.
+                  key={[
+                    booking.payment.id,
+                    booking.payment.status,
+                    booking.payment.method,
+                    booking.payment.amountMinor,
+                    booking.payment.transactionId ?? '',
+                    booking.payment.paidAt ?? '',
+                  ].join('|')}
                   payment={booking.payment}
                   currency={booking.currency}
                   onSaved={refresh}

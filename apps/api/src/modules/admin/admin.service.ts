@@ -660,15 +660,36 @@ export class AdminService {
 
   // --- payments --------------------------------------------------------------
 
+  /**
+   * Pay Later is not a payment.
+   *
+   * It records a booking that will be settled off the platform later, so it has
+   * no amount, no receipt and no capture date — there is nothing on the
+   * Payments screen for it to be a row of. It is excluded from the listing and
+   * from these figures alike; counting it in the totals while hiding the rows
+   * would leave the stat cards contradicting the table beneath them.
+   */
+  private static readonly NOT_A_PAYMENT: Prisma.PaymentWhereInput = {
+    method: { not: 'PAY_LATER' },
+  };
+
   async paymentStats() {
+    const settled = AdminService.NOT_A_PAYMENT;
+
     const [collected, pending, refunded, failed] = await Promise.all([
-      this.prisma.payment.aggregate({ where: { status: 'PAID' }, _sum: { amount: true } }),
-      this.prisma.payment.aggregate({ where: { status: 'PENDING' }, _sum: { amount: true } }),
       this.prisma.payment.aggregate({
-        where: { status: 'REFUNDED' },
+        where: { ...settled, status: 'PAID' },
+        _sum: { amount: true },
+      }),
+      this.prisma.payment.aggregate({
+        where: { ...settled, status: 'PENDING' },
+        _sum: { amount: true },
+      }),
+      this.prisma.payment.aggregate({
+        where: { ...settled, status: 'REFUNDED' },
         _sum: { refundedAmount: true },
       }),
-      this.prisma.payment.count({ where: { status: 'FAILED' } }),
+      this.prisma.payment.count({ where: { ...settled, status: 'FAILED' } }),
     ]);
 
     return {
@@ -692,6 +713,8 @@ export class AdminService {
     const { page, limit, skip, take } = normalizePagination(query);
 
     const where: Prisma.PaymentWhereInput = {
+      // Never listed, whatever the filters ask for — see NOT_A_PAYMENT.
+      ...AdminService.NOT_A_PAYMENT,
       ...(query.search
         ? {
             OR: [
@@ -706,7 +729,9 @@ export class AdminService {
           }
         : {}),
       ...(query.status && query.status !== 'ALL' ? { status: query.status } : {}),
-      ...(query.method && query.method !== 'ALL' ? { method: query.method } : {}),
+      ...(query.method && query.method !== 'ALL' && query.method !== 'PAY_LATER'
+        ? { method: query.method }
+        : {}),
       // Ranged on the capture date, which is the column the table shows.
       ...dateRangeOn('paidAt', query.from, query.to),
     };

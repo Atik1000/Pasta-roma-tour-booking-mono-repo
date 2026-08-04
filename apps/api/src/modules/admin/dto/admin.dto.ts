@@ -7,7 +7,7 @@ import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 const TOUR_STATUSES = ['ALL', 'PUBLISHED', 'DRAFT'] as const;
 const BOOKING_STATUSES = ['ALL', 'CONFIRMED', 'PENDING', 'CANCELLED'] as const;
 const PAYMENT_STATUSES = ['ALL', 'PAID', 'PENDING', 'REFUNDED', 'FAILED'] as const;
-const PAYMENT_METHODS = ['ALL', 'CARD', 'PAYPAL', 'APPLE_PAY', 'CASH'] as const;
+const PAYMENT_METHODS = ['ALL', 'CASH', 'PAY_LATER', 'CARD', 'PAYPAL', 'APPLE_PAY'] as const;
 
 /**
  * The advanced-filter fields the listing screens share.
@@ -111,10 +111,12 @@ export class ListAdminPaymentsQueryDto extends DateRangeQueryDto {
   @IsIn(PAYMENT_STATUSES)
   status?: 'ALL' | 'PAID' | 'PENDING' | 'REFUNDED' | 'FAILED';
 
+  // Derived from the list the validator checks, rather than spelled out again:
+  // the two had already drifted apart, and this one was missing CASH.
   @ApiPropertyOptional({ enum: PAYMENT_METHODS })
   @IsOptional()
   @IsIn(PAYMENT_METHODS)
-  method?: 'ALL' | 'CARD' | 'PAYPAL' | 'APPLE_PAY';
+  method?: (typeof PAYMENT_METHODS)[number];
 }
 
 /** The dashboard's date-range control narrows every figure on the screen. */

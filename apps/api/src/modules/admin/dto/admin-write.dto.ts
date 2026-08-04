@@ -17,6 +17,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -154,11 +155,17 @@ export class SaveBlogDto {
   @IsIn(['PUBLISHED', 'DRAFT'])
   status!: 'PUBLISHED' | 'DRAFT';
 
+  /**
+   * `null` clears the featured image. Omitting the field cannot mean that —
+   * Prisma reads `undefined` as "leave it alone", so a removal sent as
+   * `undefined` silently kept the old photo.
+   */
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
+  @ValidateIf((_object, value) => value !== null)
   @IsString()
   @MaxLength(500)
-  coverImage?: string;
+  coverImage?: string | null;
 
   @ApiProperty({ type: [String] })
   @IsArray()
@@ -310,7 +317,9 @@ export class UpdateBookingItemDto {
   holders?: TicketHolderInputDto[];
 }
 
-const MANUAL_PAYMENT_METHODS = ['CARD', 'PAYPAL', 'APPLE_PAY', 'CASH'] as const;
+const MANUAL_PAYMENT_METHODS = ['CASH', 'PAY_LATER', 'CARD', 'PAYPAL', 'APPLE_PAY'] as const;
+
+const PAYMENT_STATUSES = ['PENDING', 'PAID', 'FAILED', 'REFUNDED'] as const;
 
 /**
  * Corrections to a manually-recorded payment.
@@ -343,4 +352,17 @@ export class UpdatePaymentDto {
   @IsOptional()
   @IsISO8601()
   paidAt?: string;
+
+  /**
+   * The status to file this payment under.
+   *
+   * Omitting it keeps the old behaviour — the status is derived from the amount
+   * against the booking total. Sending one is the operator overriding that,
+   * which is the only way to record the states no amount implies: a card that
+   * was declined (FAILED), or money returned by hand outside Stripe (REFUNDED).
+   */
+  @ApiPropertyOptional({ enum: PAYMENT_STATUSES })
+  @IsOptional()
+  @IsIn(PAYMENT_STATUSES)
+  status?: (typeof PAYMENT_STATUSES)[number];
 }

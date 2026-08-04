@@ -235,6 +235,7 @@ export interface CartItem {
   unitPriceMinor: number;
   amountMinor: number;
   currency: CurrencyCode;
+  coverImage: string | null;
   remaining: number;
   maxTickets: number;
   priceChanged: boolean;
@@ -292,12 +293,16 @@ export interface CheckoutPayload {
   fullName: string;
   email: string;
   ticketHolders: TicketHolder[];
-  /** Defaults to CARD when omitted. CASH confirms the seats and settles in person. */
+  /** Defaults to CASH when omitted. Both methods confirm the seats immediately. */
   paymentMethod?: CheckoutPaymentMethod;
 }
 
-/** The two methods a traveller can pick; the rest describe how staff recorded a payment. */
-export type CheckoutPaymentMethod = 'CARD' | 'CASH';
+/**
+ * The two methods a traveller can pick; the rest of `PaymentMethod` describes
+ * how staff recorded a payment after the fact. `CARD` is not offered while
+ * Stripe is unconfigured — see `CHECKOUT_PAYMENT_METHODS` on the API.
+ */
+export type CheckoutPaymentMethod = 'CASH' | 'PAY_LATER';
 
 export interface CheckoutResult {
   reference: string;
@@ -674,6 +679,12 @@ export class AdminResource {
       transactionId?: string;
       amountMinor?: number;
       paidAt?: string;
+      /**
+       * Omit to let the API derive the status from the amount against the
+       * booking total; send one to file the payment deliberately — FAILED and
+       * REFUNDED are states no amount implies.
+       */
+      status?: PaymentStatusValue;
     },
   ): Promise<{ message: string }> {
     return this.http.patch<{ message: string }>(`/admin/payments/${paymentId}`, payload);
@@ -868,7 +879,8 @@ export interface SaveBlogPayload {
   slug?: string;
   content: string;
   status: 'PUBLISHED' | 'DRAFT';
-  coverImage?: string;
+  /** `null` clears the featured image; omit it to leave the current one alone. */
+  coverImage?: string | null;
   categories: string[];
   metaTitle?: string;
   metaDescription?: string;
