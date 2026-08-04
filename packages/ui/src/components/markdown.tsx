@@ -7,6 +7,10 @@ import * as React from 'react';
  * elements, so a post can never inject markup or script into the page. It
  * supports exactly what the editor's toolbar produces — headings, lists,
  * quotes, bold, italic and links.
+ *
+ * Shared rather than site-only, so the admin panel's blog details screen shows
+ * a post exactly as a reader will see it — a preview that renders the body
+ * differently from the site is not a preview.
  */
 export function Markdown({ content }: { content: string }) {
   const blocks = content.split(/\n{2,}/).filter((block) => block.trim().length > 0);

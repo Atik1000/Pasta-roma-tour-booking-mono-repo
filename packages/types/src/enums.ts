@@ -63,6 +63,10 @@ export const PaymentMethod = {
   Card: 'CARD',
   PayPal: 'PAYPAL',
   ApplePay: 'APPLE_PAY',
+  /** Settled in person at the meeting point, on the day. */
+  Cash: 'CASH',
+  /** Reserved now, settled before the tour by an off-platform arrangement. */
+  PayLater: 'PAY_LATER',
 } as const;
 export type PaymentMethod = (typeof PaymentMethod)[keyof typeof PaymentMethod];
 

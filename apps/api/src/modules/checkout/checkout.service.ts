@@ -98,19 +98,19 @@ export class CheckoutService {
     const reference = await this.nextReference();
 
     /**
-     * Pay-on-arrival bookings are confirmed on creation and never expire.
+     * Both offered methods settle away from the platform, so both confirm the
+     * booking on creation and never expire.
      *
-     * A card booking is only a 30-minute hold: it stays PENDING until the
-     * Stripe webhook confirms it, and `expirePendingBookings` releases the
-     * seats if that never happens. Cash has no such signal — nobody is going to
-     * tell the server the traveller intends to turn up — so leaving it PENDING
-     * would have the sweeper cancel every cash booking half an hour after it
-     * was made. The seats are genuinely committed here; `paymentStatus` stays
-     * PENDING until staff record the cash on the day.
+     * The alternative would be to leave them PENDING with a 30-minute hold, the
+     * way a card booking waits on its Stripe webhook. But there is no such
+     * signal here — nobody is going to tell the server that a traveller intends
+     * to turn up and pay — so a hold would just have `expirePendingBookings`
+     * cancel every one of these half an hour after it was made. The seats are
+     * genuinely committed; `paymentStatus` stays PENDING until staff record the
+     * money against the booking.
      */
-    const payByCash = dto.paymentMethod === 'CASH';
-    const bookingStatus = payByCash ? 'CONFIRMED' : 'PENDING';
-    const expiresAt = payByCash ? null : new Date(Date.now() + 30 * 60_000);
+    const method = dto.paymentMethod ?? 'CASH';
+    const payAtMeetingPoint = method === 'CASH';
 
     const booking = await this.prisma.$transaction(async (tx) => {
       for (const item of priced) {
@@ -141,15 +141,15 @@ export class CheckoutService {
         data: {
           reference,
           customerId: customer.id,
-          status: bookingStatus,
+          status: 'CONFIRMED',
           paymentStatus: 'PENDING',
           currency,
           subtotal,
           bookingFee: BOOKING_FEE_MINOR,
           total,
-          // Unpaid card bookings release their seats after this instant; a cash
-          // booking has no expiry, so the sweeper leaves it alone.
-          expiresAt,
+          // No expiry: neither method is a hold waiting on a payment signal, so
+          // there is nothing for the sweeper to reclaim.
+          expiresAt: null,
           items: {
             create: priced.map((item) => {
               const holders = dto.ticketHolders.slice(holderIndex, holderIndex + item.quantity);
@@ -176,7 +176,7 @@ export class CheckoutService {
           },
           payments: {
             create: {
-              method: payByCash ? 'CASH' : 'CARD',
+              method,
               status: 'PENDING',
               amount: total,
               currency,
@@ -192,26 +192,26 @@ export class CheckoutService {
 
     const amountDue = formatMoney(total, currency);
 
+    // Both bookings are confirmed; the two mails differ only in where the
+    // traveller is told to settle up.
+    const settlement = payAtMeetingPoint
+      ? `Please bring <strong>${amountDue}</strong> in cash to the meeting point. Payment is taken there before the tour starts.`
+      : `<strong>${amountDue}</strong> is due before the tour starts. We will be in touch to arrange payment.`;
+
+    const settlementText = payAtMeetingPoint
+      ? `Please bring ${amountDue} in cash to the meeting point.`
+      : `${amountDue} is due before the tour starts; we will be in touch to arrange payment.`;
+
     await this.mail
       .send({
         to: email,
-        subject: payByCash
-          ? `Your Pasta Roma Tour booking ${booking.reference} is confirmed`
-          : `Your Pasta Roma Tour booking ${booking.reference}`,
-        html: payByCash
-          ? `
+        subject: `Your Pasta Roma Tour booking ${booking.reference} is confirmed`,
+        html: `
           <p>Hello ${dto.fullName},</p>
           <p>Your booking <strong>${booking.reference}</strong> is confirmed and your seats are reserved.</p>
-          <p>Please bring <strong>${amountDue}</strong> in cash to the meeting point. Payment is taken there before the tour starts.</p>
-        `
-          : `
-          <p>Hello ${dto.fullName},</p>
-          <p>We're holding your booking <strong>${booking.reference}</strong>.</p>
-          <p>Complete payment within 30 minutes to confirm it.</p>
+          <p>${settlement}</p>
         `,
-        text: payByCash
-          ? `Booking ${booking.reference} is confirmed. Please bring ${amountDue} in cash to the meeting point.`
-          : `We're holding booking ${booking.reference}. Complete payment within 30 minutes to confirm it.`,
+        text: `Booking ${booking.reference} is confirmed. ${settlementText}`,
       })
       .catch((error: unknown) => {
         // A mail failure must not undo a booking the traveller already made.
@@ -227,11 +227,11 @@ export class CheckoutService {
       bookingId: booking.id,
       totalMinor: booking.total,
       currency,
-      status: bookingStatus,
-      paymentMethod: payByCash ? 'CASH' : 'CARD',
-      // Phase 9 continues with Stripe: this is where the PaymentIntent client
-      // secret will be returned once STRIPE_SECRET_KEY is configured. A cash
-      // booking never has one — there is nothing for Stripe to collect.
+      status: 'CONFIRMED',
+      paymentMethod: method,
+      // Neither offered method is collected by Stripe, so there is never an
+      // intent to hand back. Restoring CARD to CHECKOUT_PAYMENT_METHODS is what
+      // brings this field back into use.
       paymentIntentClientSecret: null,
     };
   }

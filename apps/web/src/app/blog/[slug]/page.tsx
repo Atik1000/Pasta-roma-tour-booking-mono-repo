@@ -1,12 +1,11 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
-import { Thumbnail } from '@pasta/ui';
+import { Markdown, Thumbnail } from '@pasta/ui';
 import { formatDate } from '@pasta/utils';
 import { CalendarDays, Tag } from 'lucide-react';
 
 import { BlogSidebar } from '@/components/blog/blog-sidebar';
-import { Markdown } from '@/components/blog/markdown';
 import { Footer } from '@/components/layout/footer';
 import { Navbar } from '@/components/layout/navbar';
 import { api, safely } from '@/lib/api';

@@ -22,6 +22,7 @@ import {
   RadioCard,
   RadioGroup,
   Skeleton,
+  Thumbnail,
 } from '@pasta/ui';
 import { formatClockTime, formatDate, formatMoney } from '@pasta/utils';
 import {
@@ -42,8 +43,6 @@ import { useCurrency } from '@/components/currency-provider';
 import { browserApi } from '@/lib/browser-api';
 import { clearCartCount, syncCartCount } from '@/lib/cart-store';
 
-const PAYMENT_MARKS = ['VISA', 'MC', 'AMEX', 'PayPal', 'Pay'];
-
 /**
  * Checkout: billing details, one name pair per ticket, and the order summary.
  * Guest-only by design — there are no customer accounts.
@@ -61,7 +60,7 @@ export function CheckoutForm() {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [formError, setFormError] = React.useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = React.useState<Record<string, string>>({});
-  const [paymentMethod, setPaymentMethod] = React.useState<CheckoutPaymentMethod>('CARD');
+  const [paymentMethod, setPaymentMethod] = React.useState<CheckoutPaymentMethod>('CASH');
   const { currency } = useCurrency();
 
   React.useEffect(() => {
@@ -142,14 +141,9 @@ export function CheckoutForm() {
       // The server empties the cart once the booking exists.
       clearCartCount();
 
-      // A cash booking is already confirmed and has no card step to take, so it
-      // goes straight to the confirmation screen; a card booking still owes
-      // money and is only holding its seats.
-      router.push(
-        result.paymentMethod === 'CASH'
-          ? `/booking-confirmed?reference=${encodeURIComponent(result.reference)}`
-          : `/checkout/pay?reference=${encodeURIComponent(result.reference)}`,
-      );
+      // Both offered methods settle away from the site, so the booking is
+      // already confirmed and there is no payment step to send anyone to.
+      router.push(`/booking-confirmed?reference=${encodeURIComponent(result.reference)}`);
     } catch (caught) {
       if (isApiClientError(caught)) {
         setFormError(caught.message);
@@ -256,11 +250,7 @@ export function CheckoutForm() {
               {cart.items.map((item) => (
                 <div key={item.id} className="rounded-card border-border border">
                   <div className="flex flex-wrap items-start gap-4 p-4">
-                    <div
-                      role="img"
-                      aria-label={item.title}
-                      className="rounded-field h-16 w-24 shrink-0 bg-[linear-gradient(140deg,#f3ddb8,#e3b76f_55%,#b5751f)]"
-                    />
+                    <Thumbnail src={item.coverImage} alt="" className="h-16 w-24" />
                     <div className="min-w-0 flex-1">
                       <h3 className="font-display font-semibold">{item.title}</h3>
                       <ul className="text-muted-foreground mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm">
@@ -357,11 +347,7 @@ export function CheckoutForm() {
             <ul className="flex flex-col gap-4">
               {cart.items.map((item) => (
                 <li key={item.id} className="flex gap-3">
-                  <div
-                    role="img"
-                    aria-label={item.title}
-                    className="rounded-field h-12 w-16 shrink-0 bg-[linear-gradient(140deg,#f3ddb8,#e3b76f_55%,#b5751f)]"
-                  />
+                  <Thumbnail src={item.coverImage} alt="" className="h-12 w-16" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{item.title}</p>
                     <p className="text-muted-foreground text-xs">
@@ -401,14 +387,14 @@ export function CheckoutForm() {
                 onValueChange={(next) => setPaymentMethod(next as CheckoutPaymentMethod)}
               >
                 <RadioCard
-                  value="CARD"
-                  label="Pay now by card"
-                  description="Secure card payment. Your seats are held for 30 minutes."
-                />
-                <RadioCard
                   value="CASH"
                   label="Pay cash at the meeting point"
                   description={`Bring ${formatMoney(cart.totalMinor, cart.currency)} on the day. Your seats are confirmed straight away.`}
+                />
+                <RadioCard
+                  value="PAY_LATER"
+                  label="Pay later"
+                  description={`Reserve now and settle ${formatMoney(cart.totalMinor, cart.currency)} before the tour. Your seats are confirmed straight away.`}
                 />
               </RadioGroup>
             </fieldset>
@@ -421,7 +407,7 @@ export function CheckoutForm() {
                 isLoading={isSubmitting}
                 leadingIcon={<Lock aria-hidden />}
               >
-                {paymentMethod === 'CASH' ? 'Confirm Booking' : 'Proceed to Payment'}
+                Confirm Booking
               </Button>
               <Button
                 type="button"
@@ -437,25 +423,21 @@ export function CheckoutForm() {
 
             {submitted && !isSubmitting && (!fullName.trim() || !emailValid || !holdersComplete) ? (
               <p role="alert" className="text-danger text-center text-xs">
-                Complete the highlighted fields before continuing to payment.
+                Complete the highlighted fields before confirming your booking.
               </p>
             ) : null}
 
+            {/* The card-brand row that sat here is gone with the card option:
+                showing VISA and Amex marks beside two off-platform methods
+                promises a way to pay that this checkout cannot take. */}
             <p className="text-muted-foreground flex items-center justify-center gap-1.5 text-xs">
               <ShieldCheck className="text-success size-4" aria-hidden />
               Secure checkout. Your data is protected.
             </p>
 
-            <ul className="flex items-center justify-center gap-2">
-              {PAYMENT_MARKS.map((mark) => (
-                <li
-                  key={mark}
-                  className="border-border text-muted-foreground flex h-8 w-12 items-center justify-center rounded-[0.375rem] border text-[0.5rem] font-bold"
-                >
-                  {mark}
-                </li>
-              ))}
-            </ul>
+            <p className="text-muted-foreground text-center text-xs">
+              No payment is taken now — your seats are confirmed as soon as you book.
+            </p>
           </CardContent>
         </Card>
       </aside>

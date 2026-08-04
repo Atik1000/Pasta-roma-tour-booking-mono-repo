@@ -142,6 +142,7 @@ export {
   type TimelineStep,
 } from './components/section-heading';
 export { TourCard, type TourCardProps } from './components/tour-card';
+export { Markdown } from './components/markdown';
 
 // --- charts -------------------------------------------------------------------
 export {

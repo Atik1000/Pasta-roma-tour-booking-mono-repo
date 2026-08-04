@@ -13,8 +13,18 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-/** The payment methods a traveller may choose at checkout. */
-export const CHECKOUT_PAYMENT_METHODS = ['CARD', 'CASH'] as const;
+/**
+ * The payment methods a traveller may choose at checkout.
+ *
+ * Both settle away from the platform, so both confirm the booking and commit
+ * its seats immediately — they differ only in where the money is taken. `CARD`
+ * is deliberately absent: nothing here can capture a card until Stripe is
+ * configured, and offering it produced bookings that dead-ended on an
+ * unconfigured payment screen and were swept away half an hour later. Add it
+ * back to this list the day `STRIPE_SECRET_KEY` is set; the Stripe endpoints
+ * and webhook are still in place and still work.
+ */
+export const CHECKOUT_PAYMENT_METHODS = ['CASH', 'PAY_LATER'] as const;
 export type CheckoutPaymentMethod = (typeof CHECKOUT_PAYMENT_METHODS)[number];
 
 export class TicketHolderDto {
@@ -58,9 +68,9 @@ export class CheckoutDto {
    */
   @ApiPropertyOptional({
     enum: CHECKOUT_PAYMENT_METHODS,
-    default: 'CARD',
+    default: 'CASH',
     description:
-      'CARD pays now via Stripe; CASH confirms the seats and settles at the meeting point.',
+      'CASH settles at the meeting point; PAY_LATER settles before the tour by arrangement. Both confirm the seats immediately.',
   })
   @IsOptional()
   @IsIn(CHECKOUT_PAYMENT_METHODS)

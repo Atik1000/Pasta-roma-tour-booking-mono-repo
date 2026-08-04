@@ -7,16 +7,21 @@ import { cn } from '../lib/cn';
 export interface ThumbnailProps {
   /** Cover image URL, or null when the record has no photo yet. */
   src: string | null | undefined;
-  /** What the image shows — the tour or post title. */
+  /**
+   * What the image shows — the tour or post title. An empty string marks the
+   * image decorative, for the places where the title sits right beside it.
+   */
   alt: string;
   className?: string;
 }
 
 /**
- * The small cover image the admin listings show beside a title.
+ * The cover image shown beside a title, on both the admin listings and the
+ * public site.
  *
  * Uploads are arbitrary user URLs served by the API, so this uses a plain `img`
- * rather than the Next image loader.
+ * rather than the Next image loader — no `remotePatterns` entry has to be kept
+ * in step with wherever the API happens to be deployed.
  *
  * A record with no photo — or one whose URL no longer resolves — falls back to
  * the brand gradient. The fallback matters: these tiles used to be gradients
@@ -36,8 +41,9 @@ export function Thumbnail({ src, alt, className }: ThumbnailProps) {
   if (!src || failed) {
     return (
       <span
-        role="img"
-        aria-label={`${alt} (no image)`}
+        // A decorative image announces nothing at all; naming it "(no image)"
+        // beside a heading that already says it would just be noise.
+        {...(alt ? { role: 'img', 'aria-label': `${alt} (no image)` } : { 'aria-hidden': true })}
         className={cn(shape, 'bg-[linear-gradient(140deg,#f3ddb8,#e3b76f_55%,#b5751f)]')}
       />
     );

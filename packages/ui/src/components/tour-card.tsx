@@ -7,6 +7,7 @@ import { Clock, MapPin, Star } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { Badge } from './badge';
 import { Button } from './button';
+import { Thumbnail } from './thumbnail';
 
 export interface TourCardProps {
   title: string;
@@ -17,7 +18,7 @@ export interface TourCardProps {
   description?: string;
   imageUrl?: string;
   isBestseller?: boolean;
-  /** Rendered as the card's image — lets apps pass `next/image`. */
+  /** Rendered as the card's image, overriding `imageUrl` entirely. */
   image?: React.ReactNode;
   /** Wraps the whole card, e.g. a `next/link`. */
   renderLink?: (children: React.ReactNode) => React.ReactNode;
@@ -59,15 +60,15 @@ export function TourCard({
       )}
     >
       <div className="bg-muted relative aspect-[16/10] overflow-hidden">
-        {image ??
-          (imageUrl ? (
-            <img
-              src={imageUrl}
-              alt=""
-              loading="lazy"
-              className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
-            />
-          ) : null)}
+        {/* Decorative: the title sits directly underneath. A missing or dead
+            URL falls back to the brand gradient rather than a broken image. */}
+        {image ?? (
+          <Thumbnail
+            src={imageUrl}
+            alt=""
+            className="size-full rounded-none transition-transform duration-500 group-hover:scale-105"
+          />
+        )}
 
         {isBestseller ? (
           <Badge tone="solid" className="absolute left-3 top-3">

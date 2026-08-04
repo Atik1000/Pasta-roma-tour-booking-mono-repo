@@ -66,7 +66,14 @@ export class ToursService {
         take,
         include: {
           location: { select: { name: true } },
-          images: { where: { isCover: true }, take: 1, select: { url: true } },
+          // Ordered rather than filtered on `isCover`: the first image *is* the
+          // cover, and a gallery whose flag was never set would otherwise show
+          // a photo on the detail page and a gradient in the grid.
+          images: {
+            orderBy: [{ isCover: 'desc' }, { position: 'asc' }],
+            take: 1,
+            select: { url: true },
+          },
         },
       }),
       this.prisma.tour.count({ where }),
@@ -204,7 +211,11 @@ export class ToursService {
       take: limit,
       include: {
         location: { select: { name: true } },
-        images: { where: { isCover: true }, take: 1, select: { url: true } },
+        images: {
+          orderBy: [{ isCover: 'desc' }, { position: 'asc' }],
+          take: 1,
+          select: { url: true },
+        },
       },
     });
 

@@ -14,7 +14,7 @@ import { browserApi } from '@/lib/browser-api';
 const POLL_INTERVAL_MS = 2000;
 const POLL_ATTEMPTS = 15;
 
-type Phase = 'waiting' | 'paid' | 'unpaid' | 'payOnArrival' | 'unknown';
+type Phase = 'waiting' | 'paid' | 'unpaid' | 'payOnArrival' | 'payLater' | 'unknown';
 
 /**
  * What actually happened to the booking, according to the API.
@@ -46,12 +46,17 @@ export function ConfirmationStatus({ reference }: { reference: string }) {
         }
 
         /**
-         * A cash booking settles in person, so it never becomes PAID online.
-         * Polling for that would spin for thirty seconds and then tell the
-         * traveller their confirmed booking is unpaid and needs a card.
+         * Neither offered method settles online, so neither ever turns PAID
+         * here. Polling for that would spin for thirty seconds and then tell
+         * the traveller their confirmed booking is unpaid and needs a card.
          */
         if (result.paymentMethod === 'CASH') {
           setPhase('payOnArrival');
+          return;
+        }
+
+        if (result.paymentMethod === 'PAY_LATER') {
+          setPhase('payLater');
           return;
         }
 
@@ -113,7 +118,7 @@ export function ConfirmationStatus({ reference }: { reference: string }) {
     );
   }
 
-  if (phase === 'payOnArrival') {
+  if (phase === 'payOnArrival' || phase === 'payLater') {
     return (
       <>
         <span className="bg-success-soft text-success flex size-16 items-center justify-center rounded-full">
@@ -126,10 +131,13 @@ export function ConfirmationStatus({ reference }: { reference: string }) {
         </p>
 
         <ul className="text-muted-foreground flex flex-col gap-3 text-left text-sm">
+          {/* Same confirmed booking either way; only the settlement line
+              differs, because only the place the money changes hands does. */}
           <li className="flex gap-2.5">
             <Banknote className="text-primary mt-0.5 size-4 shrink-0" aria-hidden />
-            Please bring the full amount in cash to the meeting point. Payment is taken there before
-            the tour starts.
+            {phase === 'payOnArrival'
+              ? 'Please bring the full amount in cash to the meeting point. Payment is taken there before the tour starts.'
+              : 'The full amount is due before the tour starts. We will be in touch to arrange payment.'}
           </li>
           <li className="flex gap-2.5">
             <Mail className="text-primary mt-0.5 size-4 shrink-0" aria-hidden />

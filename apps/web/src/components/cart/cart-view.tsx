@@ -13,6 +13,7 @@ import {
   PriceBreakdown,
   QuantityStepper,
   Skeleton,
+  Thumbnail,
 } from '@pasta/ui';
 import { formatClockTime, formatDate, formatMoney } from '@pasta/utils';
 import {
@@ -152,11 +153,7 @@ export function CartView() {
           <Card key={item.id}>
             <CardContent className="p-5">
               <div className="flex items-start gap-4">
-                <div
-                  role="img"
-                  aria-label={item.title}
-                  className="rounded-field h-20 w-32 shrink-0 bg-[linear-gradient(140deg,#f3ddb8,#e3b76f_55%,#b5751f)]"
-                />
+                <Thumbnail src={item.coverImage} alt="" className="h-20 w-32" />
 
                 <div className="min-w-0 flex-1">
                   <h2 className="font-display text-lg font-semibold">{item.title}</h2>

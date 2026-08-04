@@ -77,6 +77,7 @@ export default async function AvailabilityPage({
           durationHours={tour.durationHours}
           priceMinor={tour.priceMinor}
           currency={tour.currency}
+          coverImage={tour.coverImage}
           initialDate={rawDate}
           initialTravellers={Number.isFinite(travellers) && travellers > 0 ? travellers : 2}
         />

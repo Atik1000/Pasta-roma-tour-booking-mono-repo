@@ -115,7 +115,12 @@ export interface SlotOption {
   id: string;
   time: ClockTime;
   available: boolean;
+  /** Seats still unsold on this departure. */
+  remaining?: number;
 }
+
+/** Below this, the exact count is worth showing — above it, "Available" is enough. */
+const LOW_SEAT_THRESHOLD = 10;
 
 export interface TimeSlotGridProps {
   slots: SlotOption[];
@@ -134,6 +139,11 @@ export function TimeSlotGrid({ slots, value, onChange, className }: TimeSlotGrid
     >
       {slots.map((slot) => {
         const selected = slot.id === value;
+        // "Available" tells a traveller nothing about how many tickets they can
+        // actually take. Without the count they pick a party size the departure
+        // cannot hold and only find out when checkout rejects it.
+        const scarce =
+          slot.available && slot.remaining !== undefined && slot.remaining <= LOW_SEAT_THRESHOLD;
 
         return (
           <button
@@ -164,10 +174,18 @@ export function TimeSlotGrid({ slots, value, onChange, className }: TimeSlotGrid
               <span
                 className={cn(
                   'block text-xs',
-                  slot.available ? 'text-success' : 'text-muted-foreground',
+                  !slot.available
+                    ? 'text-muted-foreground'
+                    : scarce
+                      ? 'text-warning-foreground'
+                      : 'text-success',
                 )}
               >
-                {slot.available ? 'Available' : 'Sold out'}
+                {!slot.available
+                  ? 'Sold out'
+                  : scarce
+                    ? `${slot.remaining} ${slot.remaining === 1 ? 'seat' : 'seats'} left`
+                    : 'Available'}
               </span>
             </span>
 

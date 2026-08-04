@@ -2,7 +2,15 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import { Breadcrumb, Card, CardContent, SectionHeading, Timeline, TourCard } from '@pasta/ui';
+import {
+  Breadcrumb,
+  Card,
+  CardContent,
+  SectionHeading,
+  Thumbnail,
+  Timeline,
+  TourCard,
+} from '@pasta/ui';
 import { formatDuration } from '@pasta/utils';
 import { Check, Clock, Info, MapPin, ShieldCheck, Smartphone } from 'lucide-react';
 
@@ -34,17 +42,6 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   };
 }
 
-/** Placeholder for tour photography — replaced by `next/image` when assets land. */
-function GalleryImage({ className, label }: { className?: string; label: string }) {
-  return (
-    <div
-      role="img"
-      aria-label={label}
-      className={`relative overflow-hidden bg-[linear-gradient(140deg,#f3ddb8,#e3b76f_55%,#b5751f)] ${className ?? ''}`}
-    />
-  );
-}
-
 export default async function TourDetailPage({ params }: { params: Params }) {
   const { slug } = await params;
   const currency = await activeCurrency();
@@ -53,6 +50,11 @@ export default async function TourDetailPage({ params }: { params: Params }) {
   if (!tour) notFound();
 
   const related = await safely(api.tours.related(slug, currency), [], 'tours.related');
+
+  // The cover leads the gallery wherever it sits in the uploaded order, and the
+  // three tiles beneath it are the rest — never the cover a second time.
+  const cover = tour.gallery.find((image) => image.isCover) ?? tour.gallery[0];
+  const rest = tour.gallery.filter((image) => image.url !== cover?.url).slice(0, 3);
 
   return (
     <>
@@ -75,21 +77,27 @@ export default async function TourDetailPage({ params }: { params: Params }) {
 
         <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="flex flex-col gap-10">
-            {/* Gallery */}
+            {/* Gallery. The cover leads; the next three sit under it. Each tile
+                falls back to the brand gradient when there is no photo for it
+                yet, which is what the whole gallery used to be. */}
             <div className="flex flex-col gap-3">
-              <GalleryImage
-                className="rounded-card aspect-[16/9]"
-                label={`${tour.title} — main photograph`}
+              <Thumbnail
+                src={cover?.url ?? tour.coverImage}
+                alt={`${tour.title} — main photograph`}
+                className="rounded-card aspect-[16/9] w-full"
               />
-              <div className="grid grid-cols-3 gap-3">
-                {tour.gallery.slice(1, 4).map((image) => (
-                  <GalleryImage
-                    key={image.url}
-                    className="rounded-card aspect-[16/10]"
-                    label={image.alt ?? tour.title}
-                  />
-                ))}
-              </div>
+              {rest.length > 0 ? (
+                <div className="grid grid-cols-3 gap-3">
+                  {rest.map((image) => (
+                    <Thumbnail
+                      key={image.url}
+                      src={image.url}
+                      alt={image.alt ?? tour.title}
+                      className="rounded-card aspect-[16/10] w-full"
+                    />
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             {/* Title. The one-line subtitle under the H1 was struck from the design. */}
@@ -227,6 +235,7 @@ export default async function TourDetailPage({ params }: { params: Params }) {
                   durationHours={item.durationHours}
                   priceMinor={item.priceMinor}
                   currency={item.currency}
+                  imageUrl={item.coverImage ?? undefined}
                   renderLink={(children) => (
                     <Link
                       href={`/tours/${item.slug}`}

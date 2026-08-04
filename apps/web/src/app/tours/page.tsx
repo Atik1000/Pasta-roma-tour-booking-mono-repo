@@ -96,6 +96,7 @@ export default async function ToursPage({ searchParams }: { searchParams: Search
                   priceMinor={tour.priceMinor}
                   currency={tour.currency}
                   description={tour.description}
+                  imageUrl={tour.coverImage ?? undefined}
                   isBestseller={tour.isBestseller}
                   showAction
                   renderLink={(children) => (

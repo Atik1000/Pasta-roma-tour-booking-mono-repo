@@ -14,6 +14,7 @@ import {
   PriceBreakdown,
   QuantityStepper,
   Skeleton,
+  Thumbnail,
   TimeSlotGrid,
 } from '@pasta/ui';
 import { formatClockTime, formatDate, formatDuration } from '@pasta/utils';
@@ -59,6 +60,7 @@ export interface AvailabilityPickerProps {
   durationHours: number;
   priceMinor: number;
   currency: CurrencyCode;
+  coverImage?: string | null;
   maxTickets?: number;
   initialDate?: string;
   initialTravellers?: number;
@@ -80,6 +82,7 @@ export function AvailabilityPicker({
   durationHours,
   priceMinor,
   currency,
+  coverImage,
   maxTickets = 10,
   initialDate,
   initialTravellers = 2,
@@ -152,6 +155,21 @@ export function AvailabilityPicker({
   const selectedSlot = slots.find((slot) => slot.id === slotId);
 
   /**
+   * Two limits govern how many tickets a traveller may take: the tour's own
+   * per-booking cap, and the seats this particular departure still has. The
+   * stepper only ever knew about the first, so eight travellers could be chosen
+   * on a departure holding three — and the mismatch only surfaced as a checkout
+   * error, with the booking never reaching the admin panel at all.
+   */
+  const seatLimit = Math.min(maxTickets, selectedSlot?.remaining ?? maxTickets);
+
+  // Switching to a smaller departure has to bring the party size down with it,
+  // otherwise the summary keeps quoting a total that cannot be booked.
+  React.useEffect(() => {
+    setTravellers((current) => Math.min(current, Math.max(1, seatLimit)));
+  }, [seatLimit]);
+
+  /**
    * Both CTAs put the departure in the cart; "Book Now" then goes straight to
    * checkout while "Add to Cart" stays on the cart page, matching the design's
    * two-button layout.
@@ -174,18 +192,14 @@ export function AvailabilityPicker({
   }
   const subtotal = priceMinor * travellers;
   const total = subtotal + BOOKING_FEE_MINOR;
-  const canBook = Boolean(selectedSlot?.available) && travellers > 0;
+  const canBook = Boolean(selectedSlot?.available) && travellers > 0 && travellers <= seatLimit;
 
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_24rem]">
       <div className="flex flex-col gap-8">
         <Card>
           <CardContent className="flex flex-wrap items-center gap-4 p-4">
-            <div
-              role="img"
-              aria-label={title}
-              className="rounded-field h-16 w-24 shrink-0 bg-[linear-gradient(140deg,#f3ddb8,#e3b76f_55%,#b5751f)]"
-            />
+            <Thumbnail src={coverImage} alt="" className="h-16 w-24" />
             <h2 className="font-display text-lg font-semibold">{title}</h2>
             <span className="text-muted-foreground ml-auto flex flex-wrap items-center gap-4 text-sm">
               <span className="inline-flex items-center gap-1.5">
@@ -244,12 +258,16 @@ export function AvailabilityPicker({
                 value={travellers}
                 onChange={setTravellers}
                 min={1}
-                max={maxTickets}
+                max={Math.max(1, seatLimit)}
               />
             </CardContent>
           </Card>
           <p className="text-muted-foreground text-xs">
-            Maximum {maxTickets} tickets per booking for this tour.
+            {selectedSlot && selectedSlot.remaining < maxTickets
+              ? `Only ${selectedSlot.remaining} ${
+                  selectedSlot.remaining === 1 ? 'ticket is' : 'tickets are'
+                } left on this departure.`
+              : `Maximum ${maxTickets} tickets per booking for this tour.`}
           </p>
         </section>
       </div>

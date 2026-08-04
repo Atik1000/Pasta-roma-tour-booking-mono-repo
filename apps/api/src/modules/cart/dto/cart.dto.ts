@@ -57,6 +57,8 @@ export class CartItemDto {
   @ApiProperty({ description: 'Adult price in minor units.' }) unitPriceMinor!: number;
   @ApiProperty() amountMinor!: number;
   @ApiProperty({ enum: CURRENCY_CODES }) currency!: CurrencyCode;
+  @ApiPropertyOptional({ nullable: true, description: "The tour's cover photo." })
+  coverImage!: string | null;
   @ApiProperty({ description: 'Seats still available on this slot.' }) remaining!: number;
   @ApiProperty({ description: 'Per-booking ticket cap for this tour.' }) maxTickets!: number;
   @ApiProperty({ description: 'True when the catalogue price changed since adding.' })

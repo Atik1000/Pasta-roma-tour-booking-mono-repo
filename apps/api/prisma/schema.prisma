@@ -66,6 +66,11 @@ enum PaymentMethod {
   /// Paid in person, in cash, at the meeting point. Never captured by Stripe:
   /// the booking is confirmed up front and settled by staff on the day.
   CASH
+  /// Reserved now and settled before the tour by some arrangement made off the
+  /// platform — transfer, invoice, or paying at the office. Like CASH it is
+  /// never captured by Stripe and the seats are committed at once; the two
+  /// differ only in where the money is eventually taken.
+  PAY_LATER
 }
 
 enum BlogStatus {

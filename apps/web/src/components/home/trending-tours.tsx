@@ -131,6 +131,7 @@ export function TrendingTours({ tours }: { tours: TourSummary[] }) {
               durationHours={tour.durationHours}
               priceMinor={tour.priceMinor}
               currency={tour.currency}
+              imageUrl={tour.coverImage ?? undefined}
               isBestseller={tour.isBestseller}
               renderLink={(children) => (
                 <Link

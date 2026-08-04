@@ -57,6 +57,9 @@ export class CartService {
                 priceAdultUsd: true,
                 maxTicketsPerTour: true,
                 location: { select: { name: true } },
+                // Ordered rather than filtered on `isCover`, so a gallery whose
+                // cover flag was never set still shows its first photo.
+                images: { orderBy: { position: 'asc' }, take: 1, select: { url: true } },
               },
             },
             slot: { select: { date: true, time: true, capacity: true, booked: true } },
@@ -76,6 +79,7 @@ export class CartService {
       unitPriceMinor: item.unitPriceSnapshot,
       amountMinor: item.unitPriceSnapshot * item.quantity,
       currency: item.currency,
+      coverImage: item.tour.images[0]?.url ?? null,
       remaining: Math.max(0, item.slot.capacity - item.slot.booked),
       maxTickets: item.tour.maxTicketsPerTour,
       // Surfaced rather than silently repriced — the traveller decides. Compared

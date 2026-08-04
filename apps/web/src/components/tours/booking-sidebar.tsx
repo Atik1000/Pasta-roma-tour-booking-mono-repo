@@ -39,7 +39,8 @@ const TRUST_ITEMS = [
   },
 ];
 
-const PAYMENT_MARKS = ['VISA', 'MC', 'AMEX', 'PayPal', 'Pay'];
+/** Mirrors the two options on the checkout screen. */
+const PAYMENT_OPTIONS = ['Cash at the meeting point', 'Pay later'];
 
 export interface BookingSidebarProps {
   slug: string;
@@ -65,7 +66,9 @@ export function BookingSidebar({
   const [days, setDays] = React.useState<{ date: string; available: boolean }[]>([]);
   const [date, setDate] = React.useState('');
   const [travellers, setTravellers] = React.useState(2);
-  const [slots, setSlots] = React.useState<{ id: string; time: string; available: boolean }[]>([]);
+  const [slots, setSlots] = React.useState<
+    { id: string; time: string; available: boolean; remaining: number }[]
+  >([]);
   const [slotId, setSlotId] = React.useState<string | undefined>(undefined);
 
   // Two weeks of availability, so the date select only offers bookable days.
@@ -114,6 +117,16 @@ export function BookingSidebar({
   }, [slug, date]);
 
   const availableSlots = slots.filter((slot) => slot.available);
+  const selectedSlot = slots.find((slot) => slot.id === slotId);
+
+  // The departure's remaining seats cap the party size just as the tour's own
+  // limit does — carrying a number the slot cannot hold through to Check
+  // Availability only moves the rejection one screen later.
+  const seatLimit = Math.min(maxTickets, selectedSlot?.remaining ?? maxTickets);
+
+  React.useEffect(() => {
+    setTravellers((current) => Math.min(current, Math.max(1, seatLimit)));
+  }, [seatLimit]);
 
   function checkAvailability() {
     const query = new URLSearchParams({ date, travellers: String(travellers) });
@@ -164,7 +177,7 @@ export function BookingSidebar({
               value={travellers}
               onChange={setTravellers}
               min={1}
-              max={maxTickets}
+              max={Math.max(1, seatLimit)}
             />
           </div>
         </div>
@@ -180,7 +193,9 @@ export function BookingSidebar({
             <SelectContent>
               {availableSlots.map((slot) => (
                 <SelectItem key={slot.id} value={slot.id}>
-                  {slot.time}
+                  {slot.remaining < maxTickets
+                    ? `${slot.time} — ${slot.remaining} left`
+                    : slot.time}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -219,15 +234,18 @@ export function BookingSidebar({
           ))}
         </ul>
 
-        <div className="border-border flex items-center gap-2 border-t pt-5">
-          <span className="text-muted-foreground text-xs">We accept</span>
+        {/* This sits two clicks from checkout, so it names the methods checkout
+            actually offers. The card-brand row it replaced promised VISA and
+            Amex, which nothing in the booking flow can take. */}
+        <div className="border-border flex flex-col gap-1.5 border-t pt-5">
+          <span className="text-muted-foreground text-xs">How you can pay</span>
           <ul className="flex flex-wrap items-center gap-1.5">
-            {PAYMENT_MARKS.map((mark) => (
+            {PAYMENT_OPTIONS.map((option) => (
               <li
-                key={mark}
-                className="border-border text-muted-foreground flex h-7 w-10 items-center justify-center rounded-[0.3rem] border text-[0.5rem] font-bold"
+                key={option}
+                className="border-border text-muted-foreground rounded-field border px-2.5 py-1 text-xs"
               >
-                {mark}
+                {option}
               </li>
             ))}
           </ul>
