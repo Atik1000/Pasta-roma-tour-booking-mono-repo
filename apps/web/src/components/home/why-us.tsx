@@ -40,9 +40,9 @@ export function WhyUs() {
         description="Twelve thousand travellers a year, and the same promises to every one of them."
       />
 
-      {/* Two across on tablets — four in a row at iPad width left each column
-          too narrow for a sentence to breathe. */}
-      <ul className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
+      {/* Four in a row only from `xl`. At iPad Pro portrait — 1024px, which is
+          `lg` — four columns left each body copy three words wide. */}
+      <ul className="mt-10 grid gap-5 sm:grid-cols-2 xl:grid-cols-4 xl:gap-6">
         {REASONS.map(({ icon: Icon, title, body }) => (
           <li
             key={title}

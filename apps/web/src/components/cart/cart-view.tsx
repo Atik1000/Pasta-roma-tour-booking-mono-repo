@@ -138,7 +138,17 @@ export function CartView() {
 
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_23rem]">
-      <div className="flex flex-col gap-5">
+      {/*
+        `min-w-0` is load-bearing on a phone.
+
+        A grid item defaults to `min-width: auto`, which refuses to shrink below
+        its content — so the ticket table's `overflow-x-auto` wrapper never got
+        to clamp, and instead of the table scrolling inside its own box the
+        whole column grew to 435px inside a 390px screen. The entire page then
+        scrolled sideways. The `minmax(0,1fr)` above solves this for the wide
+        layout; below `xl` there is no column template to carry it.
+      */}
+      <div className="flex min-w-0 flex-col gap-5">
         {error ? (
           <p
             role="alert"
