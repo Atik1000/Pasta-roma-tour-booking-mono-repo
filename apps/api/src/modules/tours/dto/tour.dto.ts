@@ -15,6 +15,9 @@ export const TOUR_SORT_OPTIONS = [
 ] as const;
 export type TourSort = (typeof TOUR_SORT_OPTIONS)[number];
 
+export const TOUR_TYPES = ['WALKING', 'BUS', 'MUSEUM', 'DAY_TRIP', 'FOOD', 'PRIVATE'] as const;
+export type TourTypeValue = (typeof TOUR_TYPES)[number];
+
 export class ListToursQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({ description: 'Free-text search over title and description.' })
   @IsOptional()
@@ -27,6 +30,18 @@ export class ListToursQueryDto extends PaginationQueryDto {
   @IsString()
   @MaxLength(120)
   location?: string;
+
+  /**
+   * The kind of experience, for the category tiles on the landing page. Those
+   * used to link to a free-text search for the word "Food" or "Museum", which
+   * matched whatever happened to mention it in a description and missed the
+   * tours that did not — a category that quietly returns the wrong tours is
+   * worse than no category at all.
+   */
+  @ApiPropertyOptional({ enum: TOUR_TYPES, description: 'The kind of experience.' })
+  @IsOptional()
+  @IsIn(TOUR_TYPES)
+  type?: TourTypeValue;
 
   @ApiPropertyOptional({ enum: TOUR_SORT_OPTIONS, default: 'popular' })
   @IsOptional()

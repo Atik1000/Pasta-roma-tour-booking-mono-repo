@@ -56,6 +56,7 @@ export class ToursService {
           }
         : {}),
       ...(query.location ? { location: { name: query.location } } : {}),
+      ...(query.type ? { type: query.type } : {}),
     };
 
     const [rows, total] = await Promise.all([

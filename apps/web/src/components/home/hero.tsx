@@ -2,28 +2,64 @@
 
 import * as React from 'react';
 
+import Image from 'next/image';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-import { Button, cn } from '@pasta/ui';
-import { Search, X } from 'lucide-react';
+import { Button } from '@pasta/ui';
+import { ArrowRight, Clock3, Search, ShieldCheck, Star, X } from 'lucide-react';
 
-import { SkylineBackdrop } from '@/components/layout/brand';
 import { forgetSearch, readRecentSearches, rememberSearch } from '@/lib/recent-searches';
 
 /**
- * Placeholder for the client's hero photography.
+ * The three claims under the search box.
  *
- * The design uses a golden-hour photo of the Tiber and St Peter's. Until those
- * assets exist, a warm gradient plus the skyline motif keeps the composition
- * and the text contrast intact — swap in `next/image` when the photo lands.
+ * They repeat what the cart's assurances promise, deliberately: the objection a
+ * traveller has before searching is the same one they have before paying, and
+ * meeting it here is what makes the search box feel safe to use.
+ */
+const TRUST = [
+  { icon: ShieldCheck, label: 'Free cancellation', detail: 'up to 24h before' },
+  { icon: Clock3, label: 'Instant confirmation', detail: 'e-tickets by email' },
+  { icon: Star, label: 'Rated 4.9 / 5', detail: 'by 12,000+ travellers' },
+];
+
+/**
+ * The hero photograph.
+ *
+ * `priority` because this is the largest contentful paint on the landing page —
+ * lazy-loading it would hand the visitor an empty gold rectangle for the first
+ * second. `sizes="100vw"` since it spans the viewport at every breakpoint, so
+ * a phone is served a phone-sized crop rather than the full 1825px plate.
+ *
+ * The scrims are what make the type legible: the photograph is bright on the
+ * left, exactly where the headline sits, so a plain overlay would either wash
+ * out the sunset or leave the text unreadable. Two gradients instead — one
+ * horizontal for the text column, one vertical to land the section on the page
+ * background — keep the sky intact while holding contrast well clear of AA.
  */
 function HeroBackdrop() {
   return (
-    <div aria-hidden className="absolute inset-0 overflow-hidden">
-      <div className="absolute inset-0 bg-[linear-gradient(160deg,#f7e4c4_0%,#e9c48b_38%,#d19a45_70%,#a9660f_100%)]" />
-      <div className="absolute inset-0 bg-[radial-gradient(80%_60%_at_70%_20%,rgba(255,244,224,.85),transparent_60%)]" />
-      <SkylineBackdrop className="text-cream-900/25 h-64" />
-      <div className="from-background absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t to-transparent" />
+    <div aria-hidden className="absolute inset-0 -z-10 overflow-hidden">
+      <Image
+        src="/hero-rome-sunset.jpg"
+        alt=""
+        fill
+        priority
+        sizes="100vw"
+        className="object-cover object-[62%_center]"
+      />
+
+      <div className="from-cream-900/85 via-cream-900/45 sm:via-cream-900/35 absolute inset-0 bg-gradient-to-r to-transparent sm:to-transparent" />
+
+      {/* The trust strip sits low and left, over the brightest water in the
+          frame; the horizontal scrim above has faded to nothing by then. This
+          holds that corner down so the small print stays readable. */}
+      <div className="from-cream-900/70 absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t to-transparent" />
+
+      {/* Blends the photograph into the page. Kept shallow — taller, and it
+          washed out the very strip the scrim above is protecting. */}
+      <div className="from-background absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t to-transparent sm:h-24" />
     </div>
   );
 }
@@ -49,27 +85,38 @@ export function Hero() {
   }
 
   return (
-    <section className="relative isolate overflow-hidden pb-16 pt-36 sm:pb-20 sm:pt-44">
+    <section className="relative isolate overflow-hidden">
       <HeroBackdrop />
 
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      {/*
+        Sized by viewport height rather than padding, so the photograph gets to
+        be a photograph on a laptop instead of a letterbox — but floored in `rem`
+        so a short window never crushes the search box, and capped so an iPad
+        Pro in portrait does not scroll a full screen before the first tour.
+      */}
+      <div className="mx-auto flex min-h-[34rem] max-w-7xl flex-col justify-center px-4 pb-16 pt-32 sm:min-h-[38rem] sm:px-6 sm:pb-20 sm:pt-40 lg:min-h-[min(44rem,88vh)] lg:px-8">
         <div className="max-w-2xl">
-          <p className="text-brand-800 mb-3 text-sm font-medium tracking-wide">
+          <p className="text-brand-200 mb-3 text-sm font-medium tracking-wide drop-shadow">
             Authentic Experiences. Timeless Memories.
           </p>
 
-          <h1 className="font-display text-cream-900 text-balance text-5xl font-semibold leading-[1.05] sm:text-6xl lg:text-7xl">
+          {/*
+            `text-4xl` at the smallest size: the old `text-5xl` put "Discover"
+            and "Rome" on separate lines on a 360px phone and pushed the search
+            box below the fold.
+          */}
+          <h1 className="font-display text-balance text-4xl font-semibold leading-[1.05] text-white drop-shadow-lg sm:text-6xl lg:text-7xl">
             Discover Rome
             <br />
             Like Never Before
           </h1>
 
-          <p className="text-cream-800 mt-6 max-w-md text-base sm:text-lg">
+          <p className="mt-5 max-w-md text-base text-white/90 drop-shadow sm:mt-6 sm:text-lg">
             Book the best tours and tickets to iconic attractions, hidden gems, and unforgettable
             experiences.
           </p>
 
-          <form onSubmit={submit} className="mt-8 max-w-lg" role="search">
+          <form onSubmit={submit} className="mt-7 max-w-lg sm:mt-8" role="search">
             <label htmlFor="hero-search" className="sr-only">
               Search tours
             </label>
@@ -82,31 +129,29 @@ export function Hero() {
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Keyword Search"
+                placeholder="Search tours, cities or landmarks"
                 className="placeholder:text-muted-foreground h-11 min-w-0 flex-1 bg-transparent text-sm outline-none"
               />
+              {/* Icon-only on a phone, where a labelled button would squeeze the
+                  input down to a few characters; labelled from `sm` up. */}
               <Button
                 type="submit"
-                size="icon"
-                className="size-11 rounded-xl"
+                className="h-11 shrink-0 rounded-xl px-4"
                 aria-label="Search tours"
               >
-                <Search aria-hidden />
+                <Search className="sm:hidden" aria-hidden />
+                <span className="hidden sm:inline">Search</span>
               </Button>
             </div>
           </form>
 
           {recent.length > 0 ? (
-            <div className="mt-6">
-              <p className="text-cream-800 mb-3 text-sm">Recent Search History</p>
-              <ul className="flex flex-wrap gap-2.5">
+            <div className="mt-5">
+              <p className="mb-2.5 text-sm text-white/80">Recent searches</p>
+              <ul className="flex flex-wrap gap-2">
                 {recent.map((term) => (
                   <li key={term}>
-                    <span
-                      className={cn(
-                        'bg-card/95 inline-flex items-center gap-2 rounded-full py-1.5 pl-3 pr-1.5 text-sm shadow-sm',
-                      )}
-                    >
+                    <span className="bg-card/95 inline-flex items-center gap-2 rounded-full py-1.5 pl-3 pr-1.5 text-sm shadow-sm">
                       <button
                         type="button"
                         onClick={() => {
@@ -130,8 +175,35 @@ export function Hero() {
                 ))}
               </ul>
             </div>
-          ) : null}
+          ) : (
+            // Only when there is no search history to show — two rows of chips
+            // stacked on a phone pushed everything below the fold.
+            <div className="mt-7">
+              <Button
+                asChild
+                variant="outline"
+                className="border-white/40 bg-white/10 text-white backdrop-blur-sm hover:bg-white/20 hover:text-white"
+              >
+                <Link href="/tours">
+                  Browse all tours
+                  <ArrowRight aria-hidden />
+                </Link>
+              </Button>
+            </div>
+          )}
         </div>
+
+        <ul className="mt-10 flex flex-wrap gap-x-8 gap-y-4 sm:mt-14">
+          {TRUST.map(({ icon: Icon, label, detail }) => (
+            <li key={label} className="flex items-center gap-2.5">
+              <Icon className="text-brand-200 size-5 shrink-0 drop-shadow" aria-hidden />
+              <span className="leading-tight drop-shadow-md">
+                <span className="block text-sm font-medium text-white">{label}</span>
+                <span className="block text-xs text-white/85">{detail}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   );

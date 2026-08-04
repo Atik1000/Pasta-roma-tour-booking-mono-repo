@@ -67,18 +67,41 @@ export function Navbar({ overlay = false }: NavbarProps) {
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
+  /**
+   * Overlaying a photograph, not a gradient.
+   *
+   * The overlay bar used to be 85% cream, which was invisible over the old gold
+   * hero but cuts a pale band across the top of a photograph — the sky just
+   * stops. It is transparent now, with a dark scrim carrying the type instead,
+   * so the image runs edge to edge behind it.
+   *
+   * That flips the text: dark links vanish against a sunset, so everything in
+   * the bar switches to white while overlaying. Non-overlay pages are untouched.
+   */
+  const linkTone = overlay
+    ? 'text-white/90 hover:text-white'
+    : 'text-foreground hover:text-primary';
+  const activeTone = overlay ? 'text-white font-medium' : 'text-primary';
+
   return (
     <header
       className={cn(
         'z-40 w-full',
         overlay
-          ? 'bg-card/85 absolute inset-x-0 top-0 border-b border-white/10 backdrop-blur-md'
+          ? 'absolute inset-x-0 top-0 text-white'
           : 'border-border bg-card/95 shadow-navbar sticky top-0 border-b backdrop-blur-md',
       )}
     >
+      {overlay ? (
+        <div
+          aria-hidden
+          className="from-cream-900/75 pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b to-transparent"
+        />
+      ) : null}
+
       <nav
         aria-label="Primary"
-        className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-6 px-4 sm:px-6 lg:px-8"
+        className="relative mx-auto flex h-20 max-w-7xl items-center justify-between gap-6 px-4 sm:px-6 lg:px-8"
       >
         <Link
           href="/"
@@ -94,8 +117,8 @@ export function Navbar({ overlay = false }: NavbarProps) {
               <Link
                 href={link.href}
                 className={cn(
-                  'hover:text-primary text-sm transition-colors',
-                  isActive(link.href) ? 'text-primary' : 'text-foreground',
+                  'text-sm transition-colors',
+                  isActive(link.href) ? activeTone : linkTone,
                 )}
               >
                 {link.label}
@@ -105,7 +128,12 @@ export function Navbar({ overlay = false }: NavbarProps) {
 
           <li>
             <DropdownMenu>
-              <DropdownMenuTrigger className="hover:text-primary focus-visible:outline-ring flex items-center gap-1 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-4">
+              <DropdownMenuTrigger
+                className={cn(
+                  'focus-visible:outline-ring flex items-center gap-1 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-4',
+                  linkTone,
+                )}
+              >
                 Locations
                 <ChevronDown className="size-4" aria-hidden />
               </DropdownMenuTrigger>
@@ -124,8 +152,8 @@ export function Navbar({ overlay = false }: NavbarProps) {
               <Link
                 href={link.href}
                 className={cn(
-                  'hover:text-primary text-sm transition-colors',
-                  isActive(link.href) ? 'text-primary' : 'text-foreground',
+                  'text-sm transition-colors',
+                  isActive(link.href) ? activeTone : linkTone,
                 )}
               >
                 {link.label}
@@ -138,7 +166,10 @@ export function Navbar({ overlay = false }: NavbarProps) {
               <DropdownMenuTrigger
                 disabled={isSwitching}
                 aria-label={`Currency: ${currency}. Change currency.`}
-                className="hover:text-primary focus-visible:outline-ring flex items-center gap-1 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 disabled:opacity-60"
+                className={cn(
+                  'focus-visible:outline-ring flex items-center gap-1 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 disabled:opacity-60',
+                  linkTone,
+                )}
               >
                 {currency}
                 <ChevronDown className="size-4" aria-hidden />
@@ -162,7 +193,10 @@ export function Navbar({ overlay = false }: NavbarProps) {
         <div className="flex items-center gap-3">
           <Link
             href="/cart"
-            className="hover:text-primary relative hidden items-center gap-2 text-sm transition-colors sm:inline-flex"
+            className={cn(
+              'relative hidden items-center gap-2 text-sm transition-colors sm:inline-flex',
+              linkTone,
+            )}
           >
             <ShoppingCart className="size-5" aria-hidden />
             Cart
@@ -186,7 +220,17 @@ export function Navbar({ overlay = false }: NavbarProps) {
           {/* Mobile */}
           <Sheet>
             <SheetTrigger asChild>
-              <Button variant="subtle" size="icon" className="lg:hidden" aria-label="Open menu">
+              <Button
+                variant="subtle"
+                size="icon"
+                aria-label="Open menu"
+                className={cn(
+                  'lg:hidden',
+                  // The subtle variant is a pale grey chip — invisible on a
+                  // photograph, which is all a phone sees of this page.
+                  overlay && 'border-white/40 bg-white/15 text-white hover:bg-white/25',
+                )}
+              >
                 <Menu aria-hidden />
               </Button>
             </SheetTrigger>

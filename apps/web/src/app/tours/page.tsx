@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { EmptyState, TourCard } from '@pasta/ui';
 import { formatResultRange } from '@pasta/utils';
 
+import type { ListToursParams } from '@pasta/api-client';
+
 import { Footer } from '@/components/layout/footer';
 import { Navbar } from '@/components/layout/navbar';
 import { PageHero } from '@/components/layout/page-hero';
@@ -37,6 +39,8 @@ export default async function ToursPage({ searchParams }: { searchParams: Search
     api.tours.list({
       q: first(params.q),
       location: first(params.location),
+      // Where the landing page's category tiles land.
+      type: first(params.type) as ListToursParams['type'],
       sort: first(params.sort) as 'popular' | 'price-asc' | 'price-desc' | 'duration' | undefined,
       page,
       limit: PER_PAGE,

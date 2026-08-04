@@ -54,6 +54,8 @@ export interface AvailabilityDay {
 export interface ListToursParams {
   q?: string;
   location?: string;
+  /** The kind of experience — what the landing page's category tiles filter by. */
+  type?: 'WALKING' | 'BUS' | 'MUSEUM' | 'DAY_TRIP' | 'FOOD' | 'PRIVATE';
   sort?: 'popular' | 'price-asc' | 'price-desc' | 'duration' | 'newest';
   page?: number;
   limit?: number;

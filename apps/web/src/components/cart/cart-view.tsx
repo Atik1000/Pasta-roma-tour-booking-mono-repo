@@ -109,7 +109,7 @@ export function CartView() {
 
   if (!cart) {
     return (
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_23rem]">
+      <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_23rem]">
         <div className="flex flex-col gap-5">
           {Array.from({ length: 2 }, (_, index) => (
             <Skeleton key={index} className="h-56 w-full" />
@@ -137,7 +137,7 @@ export function CartView() {
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_23rem]">
+    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_23rem]">
       <div className="flex flex-col gap-5">
         {error ? (
           <p
@@ -271,8 +271,19 @@ export function CartView() {
         </div>
       </div>
 
-      <aside className="flex flex-col gap-5">
-        <Card className="sticky top-24">
+      {/*
+        The whole column travels with the scroll, not just the summary card
+        inside it.
+
+        Only the summary used to be sticky, so once it had scrolled to its
+        resting place the assurances card below it carried on up and left a tall
+        blank strip beside a long basket — the summary appeared to float in
+        empty space. `self-start` is what makes it work in a grid: a grid item
+        stretches to the row height by default, and a sticky element cannot move
+        inside a box that is already as tall as its container.
+      */}
+      <aside className="flex flex-col gap-5 xl:sticky xl:top-24 xl:self-start">
+        <Card>
           <CardContent className="flex flex-col gap-5 p-6">
             <div className="flex items-center justify-between">
               <h2 className="font-display text-lg font-semibold">Order Summary</h2>
