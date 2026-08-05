@@ -4,7 +4,9 @@ import * as React from 'react';
 
 import { useSearchParams } from 'next/navigation';
 
-import { Button, Card, CardContent, Input, Skeleton, StatusPill } from '@pasta/ui';
+import Link from 'next/link';
+
+import { Button, Card, CardContent, Input, Skeleton, StatusPill, Thumbnail } from '@pasta/ui';
 import { formatClockTime, formatDate, formatMoney } from '@pasta/utils';
 import {
   CalendarDays,
@@ -121,10 +123,28 @@ export function BookingLookup() {
     }
   }
 
+  // Once the link has done its job the search box is no longer the point of the
+  // screen — the bookings are. It collapses to a one-line "search a different
+  // address" rather than sitting above the results taking the eye first.
+  const hasResults = bookings !== null && bookings.length > 0;
+  const [showLookup, setShowLookup] = React.useState(false);
+
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
-      <div className="flex flex-col gap-6">
-        <Card>
+    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="flex min-w-0 flex-col gap-6">
+        {hasResults && !showLookup ? (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-muted-foreground text-sm">
+              Showing {bookings.length} {bookings.length === 1 ? 'booking' : 'bookings'}
+            </p>
+            <Button variant="ghost" size="sm" onClick={() => setShowLookup(true)}>
+              <Search aria-hidden />
+              Search another address
+            </Button>
+          </div>
+        ) : null}
+
+        <Card className={hasResults && !showLookup ? 'hidden' : undefined}>
           <CardContent className="p-6">
             <div className="flex items-start gap-4">
               <span className="bg-accent text-accent-foreground hidden size-12 shrink-0 items-center justify-center rounded-full sm:flex">
@@ -193,75 +213,101 @@ export function BookingLookup() {
 
         {bookings ? (
           <>
-            <p className="text-muted-foreground text-sm">
-              Showing {bookings.length} {bookings.length === 1 ? 'booking' : 'bookings'}
-            </p>
+            {showLookup || bookings.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                Showing {bookings.length} {bookings.length === 1 ? 'booking' : 'bookings'}
+              </p>
+            ) : null}
 
             <ul className="flex flex-col gap-5">
               {bookings.map((booking) => (
                 <li key={booking.reference}>
-                  <Card>
-                    {/* Booking thumbnails were struck from this screen. */}
-                    <CardContent className="p-5">
-                      <div className="flex flex-wrap items-start justify-between gap-4">
-                        <div>
-                          <p className="text-muted-foreground text-xs">Booking ID</p>
-                          <p className="font-display text-lg font-semibold">{booking.reference}</p>
-                          <p className="text-muted-foreground mt-1 inline-flex items-center gap-1.5 text-sm">
-                            <CalendarDays className="size-4" aria-hidden />
-                            {formatDate(booking.bookedAt)}
-                          </p>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          <StatusPill status={booking.status} />
-                          <StatusPill
-                            status={booking.paymentStatus}
-                            label={
-                              booking.paymentStatus === 'PENDING' ? 'Payment Pending' : undefined
-                            }
-                          />
-                        </div>
-
-                        <div className="text-right">
-                          <p className="text-muted-foreground text-xs">Total Amount</p>
-                          <p className="font-display text-xl font-semibold">
-                            {formatMoney(booking.totalMinor, booking.currency)}
-                          </p>
-                        </div>
+                  <Card className="overflow-hidden">
+                    {/*
+                      A tinted header band carries the reference, the statuses
+                      and the total, so the three things a traveller checks
+                      first are read in one glance rather than picked out of a
+                      flat card.
+                    */}
+                    <div className="bg-cream-100 border-border flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b px-5 py-4">
+                      <div className="min-w-0">
+                        <p className="text-muted-foreground text-xs">Booking ID</p>
+                        <p className="font-display text-lg font-semibold">{booking.reference}</p>
+                        <p className="text-muted-foreground mt-0.5 inline-flex items-center gap-1.5 text-xs">
+                          <CalendarDays className="size-3.5" aria-hidden />
+                          Booked {formatDate(booking.bookedAt)}
+                        </p>
                       </div>
 
-                      <p className="mt-4 text-sm font-medium">
-                        {booking.tours.length} {booking.tours.length === 1 ? 'Tour' : 'Tours'}
-                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <StatusPill status={booking.status} />
+                        <StatusPill
+                          status={booking.paymentStatus}
+                          label={
+                            booking.paymentStatus === 'PENDING' ? 'Payment Pending' : undefined
+                          }
+                        />
+                      </div>
 
-                      <ul className="mt-2 flex flex-col gap-2">
+                      <div className="ml-auto text-right">
+                        <p className="text-muted-foreground text-xs">Total Amount</p>
+                        <p className="font-display text-primary text-xl font-semibold">
+                          {formatMoney(booking.totalMinor, booking.currency)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <CardContent className="p-5">
+                      {/*
+                        One row per tour, led by its photograph. Thumbnails were
+                        struck from this screen originally; they earn their place
+                        now that the tours carry real cover images, because a
+                        picture is how someone recognises which trip this was.
+                      */}
+                      <ul className="flex flex-col gap-4">
                         {booking.tours.map((tour) => (
                           <li
-                            key={`${tour.title}-${tour.date}-${tour.time}`}
-                            className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm"
+                            key={`${tour.slug}-${tour.date}-${tour.time}`}
+                            className="flex items-start gap-4"
                           >
-                            <span className="inline-flex items-center gap-2">
-                              <span className="bg-primary size-1.5 rounded-full" aria-hidden />
-                              {tour.title}
-                            </span>
-                            <span className="text-muted-foreground inline-flex items-center gap-1.5">
-                              <CalendarDays className="size-4" aria-hidden />
-                              {formatDate(tour.date)}
-                            </span>
-                            <span className="text-muted-foreground inline-flex items-center gap-1.5">
-                              <Clock className="size-4" aria-hidden />
-                              {formatClockTime(tour.time)}
-                            </span>
-                            {tour.location ? (
-                              <span className="text-muted-foreground inline-flex items-center gap-1.5">
-                                <MapPin className="size-4" aria-hidden />
-                                {tour.location}
-                              </span>
-                            ) : null}
-                            <span className="text-muted-foreground inline-flex items-center gap-1.5">
-                              <Users className="size-4" aria-hidden />
-                              {tour.travellers} Adults
+                            <Thumbnail
+                              src={tour.coverImage}
+                              alt=""
+                              className="h-16 w-24 sm:h-20 sm:w-28"
+                            />
+
+                            <div className="min-w-0 flex-1">
+                              <Link
+                                href={`/tours/${tour.slug}`}
+                                className="hover:text-primary font-medium transition-colors"
+                              >
+                                {tour.title}
+                              </Link>
+
+                              <ul className="text-muted-foreground mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                                <li className="inline-flex items-center gap-1.5">
+                                  <CalendarDays className="size-4 shrink-0" aria-hidden />
+                                  {formatDate(tour.date)}
+                                </li>
+                                <li className="inline-flex items-center gap-1.5">
+                                  <Clock className="size-4 shrink-0" aria-hidden />
+                                  {formatClockTime(tour.time)}
+                                </li>
+                                {tour.location ? (
+                                  <li className="inline-flex items-center gap-1.5">
+                                    <MapPin className="size-4 shrink-0" aria-hidden />
+                                    {tour.location}
+                                  </li>
+                                ) : null}
+                                <li className="inline-flex items-center gap-1.5">
+                                  <Users className="size-4 shrink-0" aria-hidden />
+                                  {tour.travellers} {tour.travellers === 1 ? 'Adult' : 'Adults'}
+                                </li>
+                              </ul>
+                            </div>
+
+                            <span className="hidden shrink-0 text-sm font-medium tabular-nums sm:block">
+                              {formatMoney(tour.amountMinor, booking.currency)}
                             </span>
                           </li>
                         ))}
@@ -370,8 +416,10 @@ export function BookingLookup() {
         ) : null}
       </div>
 
-      <aside>
-        <Card className="sticky top-24">
+      {/* Sticky as a whole column, and `self-start` so the grid row's height
+          does not pin it in place — the same fix the cart needed. */}
+      <aside className="xl:sticky xl:top-24 xl:self-start">
+        <Card>
           <CardContent className="flex flex-col gap-4 p-6">
             <span className="bg-accent text-accent-foreground flex size-12 items-center justify-center rounded-full">
               <Headphones className="size-5" aria-hidden />

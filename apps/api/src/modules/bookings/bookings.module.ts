@@ -36,6 +36,14 @@ export class MessageDto {
 
 export class BookingTourDto {
   @ApiProperty() title!: string;
+  /** So the traveller can open the tour they booked. */
+  @ApiProperty() slug!: string;
+  /**
+   * Presentational, and read live rather than denormalised: if the operator has
+   * since replaced the tour's photography, the traveller should see the current
+   * picture, not whatever was on the page the day they booked.
+   */
+  @ApiPropertyOptional({ nullable: true }) coverImage!: string | null;
   @ApiProperty() date!: string;
   @ApiProperty() time!: string;
   @ApiProperty() location!: string;
@@ -140,9 +148,11 @@ export class BookingsService {
           include: {
             tour: {
               select: {
+                slug: true,
                 meetingPointTitle: true,
                 meetingPointAddress: true,
                 location: { select: { name: true } },
+                images: { where: { isCover: true }, take: 1, select: { url: true } },
               },
             },
           },
@@ -161,6 +171,8 @@ export class BookingsService {
       currency: booking.currency,
       tours: booking.items.map((item) => ({
         title: item.tourTitle,
+        slug: item.tour.slug,
+        coverImage: item.tour.images[0]?.url ?? null,
         date: item.date.toISOString().slice(0, 10),
         time: item.time,
         // The tour can be renamed or moved after booking; the departure and

@@ -893,6 +893,10 @@ export interface SaveBlogPayload {
 
 export interface TravellerBookingTour {
   title: string;
+  /** Links back to the tour that was booked. */
+  slug: string;
+  /** Read live, so a re-photographed tour shows its current picture. */
+  coverImage: string | null;
   date: string;
   time: string;
   location: string;
