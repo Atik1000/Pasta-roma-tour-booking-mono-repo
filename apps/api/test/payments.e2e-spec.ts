@@ -10,16 +10,17 @@ import {
 } from './harness';
 
 /**
- * The payment surface as it behaves with no Stripe credentials — which is how
+ * The payment surface as it behaves with no gateway credentials — which is how
  * development and CI actually run.
  *
  * The point is that an unconfigured environment degrades honestly: the routes
  * exist, they are reachable, authorisation is still enforced, and they answer
- * 503 rather than 500 or, worse, pretending to succeed. Stripe's own behaviour
- * is covered by `payments.service.spec.ts`, which stubs the client so the rules
- * are verifiable without live keys.
+ * 503 rather than 500 or, worse, pretending to succeed. Each gateway's own
+ * behaviour is covered by `stripe-payments.service.spec.ts` and
+ * `revolut-payments.service.spec.ts`, which stub the client so the rules are
+ * verifiable without live keys.
  */
-describe('Payments (e2e, Stripe unconfigured)', () => {
+describe('Payments (e2e, no gateway configured)', () => {
   let harness: Harness;
   let server: App;
   let fixture: SeedFixture;
@@ -101,6 +102,15 @@ describe('Payments (e2e, Stripe unconfigured)', () => {
         .post('/api/v1/payments/webhook')
         .set('stripe-signature', 'anything')
         .send({ type: 'payment_intent.succeeded' })
+        .expect(503);
+    });
+
+    it('answers 503 on the Revolut webhook too, on its own path', async () => {
+      await request(server)
+        .post('/api/v1/payments/webhook/revolut')
+        .set('revolut-signature', 'v1=anything')
+        .set('revolut-request-timestamp', String(Date.now()))
+        .send({ event: 'ORDER_COMPLETED', order_id: 'ord_x' })
         .expect(503);
     });
 

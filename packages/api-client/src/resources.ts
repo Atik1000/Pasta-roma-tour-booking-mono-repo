@@ -324,8 +324,9 @@ export class CheckoutResource {
   }
 
   /**
-   * Starts card payment. Returns the client secret the browser hands to
-   * Stripe; card details never touch this application's server.
+   * Starts card payment. Returns whatever the configured gateway needs the
+   * browser to hold — a Stripe client secret, or a Revolut order token. Card
+   * details never touch this application's server either way.
    */
   paymentIntent(reference: string): Promise<PaymentIntentResult> {
     return this.http.post<PaymentIntentResult>(`/checkout/${reference}/payment-intent`);
@@ -337,12 +338,35 @@ export class CheckoutResource {
   }
 }
 
-export interface PaymentIntentResult {
-  clientSecret: string;
-  publishableKey: string | null;
-  amountMinor: number;
-  currency: CurrencyCode;
-}
+/** Which gateway a payment was opened with. */
+export type PaymentProviderValue = 'STRIPE' | 'REVOLUT';
+
+/**
+ * What the payment page needs to start a card payment.
+ *
+ * A discriminated union, because the two gateways genuinely need different
+ * things in the browser: Stripe mounts Elements against a client secret,
+ * Revolut mounts its widget against an order token. Flattening them into one
+ * optional-everything object would only move the branch out of the type system
+ * and into a runtime guess.
+ */
+export type PaymentIntentResult =
+  | {
+      provider: 'stripe';
+      clientSecret: string;
+      publishableKey: string | null;
+      amountMinor: number;
+      currency: CurrencyCode;
+    }
+  | {
+      provider: 'revolut';
+      /** The order's public id. The private one never leaves the API. */
+      token: string;
+      publicKey: string | null;
+      environment: 'sandbox' | 'prod';
+      amountMinor: number;
+      currency: CurrencyCode;
+    };
 
 export interface BookingPaymentStatus {
   reference: string;
@@ -426,12 +450,14 @@ export interface AdminBookingDetail {
   payment: {
     id: string;
     method: string;
+    /** The gateway holding this payment — where a refund would be sent. */
+    provider: PaymentProviderValue;
     transactionId: string | null;
     amountMinor: number;
     paidAt: string | null;
     status: PaymentStatusValue;
     /**
-     * False for Stripe-captured payments. Those are the processor's record and
+     * False for gateway-captured payments. Those are the processor's record and
      * the admin screen shows them read-only — the API rejects edits to them.
      */
     isManual: boolean;
@@ -469,6 +495,8 @@ export interface AdminPayment {
   bookingReference: string;
   customerName: string;
   method: string;
+  /** The gateway holding this payment — where a refund would be sent. */
+  provider: PaymentProviderValue;
   transactionId: string | null;
   amountMinor: number;
   refundedMinor: number;
@@ -951,12 +979,28 @@ export interface TravellerBooking {
   tours: TravellerBookingTour[];
 }
 
+export interface BookingLookupResult {
+  /** Required by the ticket and invoice downloads. */
+  token: string;
+  bookings: TravellerBooking[];
+}
+
 export class BookingsResource {
   constructor(private readonly http: HttpClient) {}
 
+  /**
+   * The bookings for an address, in every status, newest first.
+   *
+   * The token comes back with them because the address opens the list but not
+   * the paperwork — `ticketsPdf` and `invoicePdf` still want it.
+   */
+  lookup(email: string): Promise<BookingLookupResult> {
+    return this.http.post<BookingLookupResult>('/bookings/lookup', { email });
+  }
+
   /** Always resolves — the response never reveals whether the address exists. */
   requestLink(email: string): Promise<{ message: string }> {
-    return this.http.post<{ message: string }>('/bookings/lookup', { email });
+    return this.http.post<{ message: string }>('/bookings/lookup/link', { email });
   }
 
   byToken(token: string): Promise<TravellerBooking[]> {

@@ -119,6 +119,38 @@ export const stripeConfig = registerAs('stripe', () => {
   };
 });
 
+export const revolutConfig = registerAs('revolut', () => {
+  const parsed = env();
+  return {
+    apiUrl: parsed.REVOLUT_API_URL.replace(/\/+$/, ''),
+    secretKey: parsed.REVOLUT_SECRET_KEY,
+    // Safe to hand to the browser — it identifies the merchant and can only
+    // mount a checkout against an order this server already created.
+    publicKey: parsed.REVOLUT_PUBLIC_KEY,
+    /** One or more secrets; several are accepted while one is being rotated. */
+    webhookSecrets: (parsed.REVOLUT_WEBHOOK_SECRET ?? '')
+      .split(',')
+      .map((secret) => secret.trim())
+      .filter(Boolean),
+    /**
+     * Which Revolut the *widget* should talk to.
+     *
+     * Derived from the API host rather than configured separately: the two
+     * must agree, and a token minted in sandbox is meaningless to production.
+     * Setting them independently is only an opportunity to set them apart.
+     */
+    environment: parsed.REVOLUT_API_URL.includes('sandbox')
+      ? ('sandbox' as const)
+      : ('prod' as const),
+    enabled: Boolean(parsed.REVOLUT_SECRET_KEY),
+  };
+});
+
+export const paymentsConfig = registerAs('payments', () => ({
+  /** Where new card payments are opened. Existing ones stay with their own. */
+  provider: env().PAYMENT_PROVIDER,
+}));
+
 export const throttleConfig = registerAs('throttle', () => {
   const parsed = env();
   return {
@@ -134,5 +166,7 @@ export const configurations = [
   jwtConfig,
   mailConfig,
   stripeConfig,
+  revolutConfig,
+  paymentsConfig,
   throttleConfig,
 ];

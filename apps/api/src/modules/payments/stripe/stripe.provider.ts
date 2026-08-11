@@ -2,7 +2,7 @@ import { ConfigType } from '@nestjs/config';
 import { Logger, type Provider } from '@nestjs/common';
 import Stripe from 'stripe';
 
-import { stripeConfig } from '../../config/configuration';
+import { stripeConfig } from '../../../config/configuration';
 
 export const STRIPE_CLIENT = Symbol('STRIPE_CLIENT');
 

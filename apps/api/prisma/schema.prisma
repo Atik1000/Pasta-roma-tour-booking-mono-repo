@@ -59,6 +59,12 @@ enum PaymentStatus {
   REFUNDED
 }
 
+/// The card gateway a payment was opened with.
+enum PaymentProvider {
+  STRIPE
+  REVOLUT
+}
+
 enum PaymentMethod {
   CARD
   PAYPAL
@@ -434,12 +440,17 @@ model Payment {
   bookingId String  @db.Uuid
   booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
-  method   PaymentMethod @default(CARD)
-  status   PaymentStatus @default(PENDING)
+  method   PaymentMethod   @default(CARD)
+  status   PaymentStatus   @default(PENDING)
+  /// Which gateway holds this payment. Recorded per payment, not read from
+  /// configuration: switching the configured provider must not make yesterday's
+  /// payments unrefundable by claiming they live somewhere they do not.
+  provider PaymentProvider @default(STRIPE)
   amount   Int
-  currency CurrencyCode  @default(EUR)
+  currency CurrencyCode    @default(EUR)
 
-  /// Stripe PaymentIntent id; unique so webhook replays cannot double-apply.
+  /// The gateway's own id for this payment — a Stripe PaymentIntent id, or a
+  /// Revolut order id. Unique so webhook replays cannot double-apply.
   providerIntentId String? @unique
   transactionId    String?
   failureReason    String?
@@ -448,6 +459,10 @@ model Payment {
   refundedAt DateTime?
   /// Refunded amount in minor units; supports partial refunds.
   refundedAmount Int @default(0)
+  /// Gateway ids of the refunds already folded into `refundedAmount`. Revolut
+  /// reports one refund at a time rather than a running total, so this is what
+  /// stops a replayed webhook counting the same refund twice.
+  appliedRefundIds String[] @default([])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

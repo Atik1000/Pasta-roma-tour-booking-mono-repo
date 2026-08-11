@@ -629,11 +629,12 @@ export class AdminService {
         ? {
             id: payment.id,
             method: payment.method,
+            provider: payment.provider,
             status: payment.status,
             transactionId: payment.transactionId,
             amountMinor: payment.amount,
             paidAt: payment.paidAt?.toISOString() ?? null,
-            // A Stripe-backed record is owned by the processor and stays
+            // A gateway-backed record is owned by the processor and stays
             // read-only in the admin panel.
             isManual: payment.providerIntentId === null,
           }
@@ -812,6 +813,7 @@ export class AdminService {
         bookingReference: row.booking.reference,
         customerName: row.booking.customer.fullName,
         method: row.method,
+        provider: row.provider,
         transactionId: row.transactionId,
         amountMinor: row.amount,
         refundedMinor: row.refundedAmount,

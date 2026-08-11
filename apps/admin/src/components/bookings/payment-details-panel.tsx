@@ -44,6 +44,12 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = Object.fromEntries(
   PAYMENT_METHODS.map((entry) => [entry.value, entry.label]),
 );
 
+/** How each gateway is written on screen — its own capitalisation, not ours. */
+const PAYMENT_PROVIDER_LABELS: Record<string, string> = {
+  STRIPE: 'Stripe',
+  REVOLUT: 'Revolut',
+};
+
 /**
  * Every state a manually-recorded payment can be filed under.
  *
@@ -161,6 +167,15 @@ export function PaymentDetailsPanel({
               {PAYMENT_METHOD_LABELS[payment.method] ?? payment.method}
             </dd>
           </div>
+          {/* With two card gateways live at once, which one holds the money is
+              no longer implied by "Card" — and a refund goes back through the
+              one that took it. */}
+          <div className="flex justify-between gap-4">
+            <dt className="text-muted-foreground">Processed By</dt>
+            <dd className="font-medium">
+              {PAYMENT_PROVIDER_LABELS[payment.provider] ?? payment.provider}
+            </dd>
+          </div>
           <div className="flex items-center justify-between gap-4">
             <dt className="text-muted-foreground">Status</dt>
             <dd>
@@ -190,8 +205,9 @@ export function PaymentDetailsPanel({
         <p className="text-muted-foreground rounded-field bg-muted/50 mt-4 flex gap-2.5 p-3 text-xs">
           <Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           <span>
-            Captured by Stripe, so this is its record to keep. Use <strong>Refund</strong> on the
-            Payments screen to return money, or add an order note to explain a discrepancy.
+            Captured by {PAYMENT_PROVIDER_LABELS[payment.provider] ?? payment.provider}, so this is
+            its record to keep. Use <strong>Refund</strong> on the Payments screen to return money,
+            or add an order note to explain a discrepancy.
           </span>
         </p>
       </>

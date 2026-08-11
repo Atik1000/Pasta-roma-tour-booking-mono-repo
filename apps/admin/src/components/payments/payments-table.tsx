@@ -148,7 +148,25 @@ export function PaymentsTable() {
       {
         id: 'method',
         header: 'Method',
-        cell: ({ row }) => humanizeEnum(row.original.method),
+        /**
+         * The gateway is shown under the method, not instead of it.
+         *
+         * With two card gateways live at once, "Card" no longer says where the
+         * money is — and a refund goes back through whichever one took it. An
+         * operator chasing a refund needs to know which dashboard to open.
+         * Only card payments have one; cash and pay-later have no gateway to
+         * name.
+         */
+        cell: ({ row }) => (
+          <span className="block">
+            {humanizeEnum(row.original.method)}
+            {row.original.method === 'CARD' ? (
+              <span className="text-muted-foreground block text-xs">
+                {humanizeEnum(row.original.provider)}
+              </span>
+            ) : null}
+          </span>
+        ),
       },
       {
         id: 'amount',

@@ -79,9 +79,18 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set JWT_REFRESH_SECRET}
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-30d}
+      # Which gateway opens new card payments. Passed explicitly because the
+      # API defaults it to `revolut`: a host that has only Stripe keys would
+      # otherwise boot fine and then fail at the moment a customer pays, which
+      # is the worst possible time to discover the setting never arrived.
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-revolut}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      REVOLUT_API_URL: ${REVOLUT_API_URL:-https://sandbox-merchant.revolut.com}
+      REVOLUT_SECRET_KEY: ${REVOLUT_SECRET_KEY:-}
+      REVOLUT_PUBLIC_KEY: ${REVOLUT_PUBLIC_KEY:-}
+      REVOLUT_WEBHOOK_SECRET: ${REVOLUT_WEBHOOK_SECRET:-}
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-Pasta Roma Tour <no-reply@pastaromatour.com>}
       THROTTLE_TTL_SECONDS: ${THROTTLE_TTL_SECONDS:-60}

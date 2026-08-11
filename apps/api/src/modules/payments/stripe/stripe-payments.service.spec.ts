@@ -1,12 +1,13 @@
 import { NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import type Stripe from 'stripe';
 
-import { BusinessException } from '../../common/exceptions/business.exception';
-import type { PrismaService } from '../../database/prisma.service';
-import type { DocumentsService } from '../documents/documents.service';
-import type { MailService } from '../mail/mail.service';
+import { BusinessException } from '../../../common/exceptions/business.exception';
+import type { PrismaService } from '../../../database/prisma.service';
+import type { DocumentsService } from '../../documents/documents.service';
+import type { MailService } from '../../mail/mail.service';
+import { PaymentLedgerService } from '../payment-ledger.service';
 
-import { PaymentsService } from './payments.service';
+import { StripePaymentsService } from './stripe-payments.service';
 
 const CONFIG = {
   secretKey: 'sk_test_stub',
@@ -18,11 +19,14 @@ const CONFIG = {
 interface PaymentRow {
   id: string;
   bookingId: string;
+  method: string;
+  provider: string;
   status: string;
   amount: number;
   currency: string;
   providerIntentId: string | null;
   refundedAmount: number;
+  appliedRefundIds: string[];
   booking: { id: string; reference: string; status: string };
 }
 
@@ -102,11 +106,14 @@ function makeStubs() {
           const row: PaymentRow = {
             id: `p${payments.length + 1}`,
             bookingId: booking.id,
+            method: 'CARD',
+            provider: 'STRIPE',
             status: 'PENDING',
             amount: booking.total,
             currency: booking.currency,
             providerIntentId: null,
             refundedAmount: 0,
+            appliedRefundIds: [],
             booking: { id: booking.id, reference: booking.reference, status: booking.status },
             ...create,
           } as PaymentRow;
@@ -165,24 +172,25 @@ function makeStubs() {
 
   const mail = { send: jest.fn(() => Promise.resolve()) };
 
-  const service = new PaymentsService(
+  // The ledger is the real one, not a stub: the rules these tests are about —
+  // replay safety, refund arithmetic, what a capture does to a booking — now
+  // live in it, and stubbing it would leave the tests asserting nothing.
+  const ledger = new PaymentLedgerService(
     prisma as unknown as PrismaService,
     documents as unknown as DocumentsService,
     mail as unknown as MailService,
-    stripe as unknown as Stripe,
-    CONFIG,
   );
 
-  return { service, prisma, stripe, documents, mail, booking, payments, notes };
+  const service = new StripePaymentsService(ledger, stripe as unknown as Stripe, CONFIG);
+
+  return { service, ledger, prisma, stripe, documents, mail, booking, payments, notes };
 }
 
-describe('PaymentsService', () => {
+describe('StripePaymentsService', () => {
   describe('when Stripe is not configured', () => {
     it('answers 503 rather than throwing at boot', async () => {
-      const service = new PaymentsService(
-        {} as PrismaService,
-        {} as DocumentsService,
-        {} as MailService,
+      const service = new StripePaymentsService(
+        new PaymentLedgerService({} as PrismaService, {} as DocumentsService, {} as MailService),
         // No client: the environment has no secret key.
         null,
         { ...CONFIG, secretKey: undefined, enabled: false },

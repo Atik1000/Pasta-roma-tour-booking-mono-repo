@@ -103,12 +103,15 @@ See `docs/DEPLOYMENT.md` for the environment variables, health-check endpoints, 
 - `docs/ARCHITECTURE.md` — how the pieces fit together
 - `docs/DEVELOPMENT.md` — day-to-day workflow and conventions
 - `docs/DEPLOYMENT.md` — Docker images, environment, migrations, scaling
+- `docs/PAYMENTS.md` — Revolut and Stripe: keys, webhooks, refunds, replay safety
 - Swagger — `http://localhost:4000/api/v1/docs` while the API is running
 
 ## Status
 
 Every screen in the designs is built and running on live data, with filtering, paging and every control wired to the API.
 
-Known gaps: card payment is not wired (bookings are created `PENDING` and hold seats for 30 minutes, and `STRIPE_SECRET_KEY` being unset makes the payment endpoints answer 503), and the seeded imagery is placeholder URLs that do not resolve — `Thumbnail` falls back to the brand gradient for those.
+Card payment is built for both **Revolut** and **Stripe**, with `PAYMENT_PROVIDER` deciding where new payments go; refunds always follow the gateway that took the money. Neither has live credentials yet, so the payment endpoints answer 503 and bookings are created `PENDING`, holding seats for 30 minutes. See `docs/PAYMENTS.md` for what has to be filled in.
 
-Payment records are editable in the admin panel only when the business recorded them itself. Anything Stripe captured is read-only there and the API rejects writes to it, so invoices, exports and the revenue figures cannot disagree with the money that actually moved. See `PaymentDetailsPanel` and `AdminWriteService.updatePayment`.
+Payment records are editable in the admin panel only when the business recorded them itself. Anything a gateway captured is read-only there and the API rejects writes to it, so invoices, exports and the revenue figures cannot disagree with the money that actually moved. See `PaymentDetailsPanel` and `AdminWriteService.updatePayment`.
+
+Seeded imagery is placeholder art drawn by the seed itself — six different compositions so a catalogue page does not read as the same picture repeated. `pnpm --filter @pasta/api db:images` redraws it without touching the database.

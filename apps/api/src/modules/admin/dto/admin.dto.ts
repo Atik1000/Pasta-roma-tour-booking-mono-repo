@@ -208,13 +208,15 @@ export class AdminBookingDetailDto {
   payment!: {
     id: string;
     method: string;
+    /** The gateway holding this payment — where a refund would be sent. */
+    provider: string;
     status: string;
     transactionId: string | null;
     amountMinor: number;
     paidAt: string | null;
     /**
-     * False when the payment came from Stripe. The record then belongs to the
-     * processor, and the admin screen shows it read-only — an operator typing a
+     * False when the payment came from a card gateway. The record then belongs
+     * to the processor, and the admin screen shows it read-only — an operator typing a
      * different captured amount would make every invoice, export and revenue
      * figure disagree with the money that actually moved.
      */
@@ -247,6 +249,7 @@ export class AdminPaymentDto {
   @ApiProperty() bookingReference!: string;
   @ApiProperty() customerName!: string;
   @ApiProperty() method!: string;
+  @ApiProperty({ enum: ['STRIPE', 'REVOLUT'] }) provider!: string;
   @ApiPropertyOptional({ nullable: true }) transactionId!: string | null;
   @ApiProperty() amountMinor!: number;
   @ApiProperty() refundedMinor!: number;

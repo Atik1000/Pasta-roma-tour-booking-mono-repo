@@ -19,6 +19,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:reset": "prisma migrate reset",
     "db:seed": "prisma db seed",
+    "db:images": "tsx prisma/refresh-seed-images.ts",
     "db:studio": "prisma studio",
     "test:e2e": "jest --config test/jest-e2e.json --runInBand",
     "test:all": "pnpm test && pnpm test:e2e"
