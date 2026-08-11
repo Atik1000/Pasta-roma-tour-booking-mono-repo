@@ -40,7 +40,8 @@ export default async function BlogPage({ searchParams }: { searchParams: SearchP
 
   return (
     <>
-      <Navbar />
+      {/* Floats over the page hero photograph. */}
+      <Navbar overlay />
 
       <main id="main">
         <PageHero
@@ -69,18 +70,43 @@ export default async function BlogPage({ searchParams }: { searchParams: SearchP
                     href={`/blog/${post.slug}`}
                     className="rounded-card border-border bg-card shadow-card hover:shadow-elevated focus-visible:outline-ring group flex flex-col overflow-hidden border transition-all hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-4 sm:flex-row"
                   >
+                    {/*
+                      A ratio at every breakpoint, not `sm:aspect-auto`.
+
+                      Auto left the image with no height at all to crop
+                      against, so `object-cover` had nothing to do and a
+                      portrait cover — which is what a phone photograph
+                      uploaded through the admin panel is — rendered at its
+                      full natural height and stretched the card to three
+                      times the height of its own text.
+                    */}
                     <Thumbnail
                       src={post.coverImage}
                       alt={post.title}
-                      className="aspect-[16/10] w-full rounded-none sm:aspect-auto sm:w-56"
+                      className="aspect-[16/10] w-full rounded-none sm:aspect-[4/3] sm:w-56"
                     />
 
                     {/* No FEATURED badge, no author byline, no read time — all struck. */}
                     <div className="flex flex-col gap-2 p-5">
                       <div className="flex flex-wrap items-center gap-3 text-xs">
-                        <span className="text-primary font-medium uppercase tracking-wide">
-                          {post.categories[0] ?? 'Article'}
-                        </span>
+                        {/*
+                          Every category, not just the first. A post filed under
+                          both "Food & Drink" and "Local Tips" used to show one
+                          of them, which made the sidebar counts look wrong —
+                          filtering by the hidden category returned a card that
+                          appeared to belong to something else.
+                        */}
+                        {post.categories.length > 0 ? (
+                          <span className="text-primary flex flex-wrap gap-x-2 gap-y-1 font-medium uppercase tracking-wide">
+                            {post.categories.map((name) => (
+                              <span key={name}>{name}</span>
+                            ))}
+                          </span>
+                        ) : (
+                          <span className="text-primary font-medium uppercase tracking-wide">
+                            Article
+                          </span>
+                        )}
                         <span className="text-muted-foreground">
                           {post.publishedAt ? formatDate(post.publishedAt) : null}
                         </span>

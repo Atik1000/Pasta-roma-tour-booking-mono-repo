@@ -18,7 +18,8 @@ export const metadata: Metadata = {
 export default function MyBookingsPage() {
   return (
     <>
-      <Navbar />
+      {/* Floats over the page hero photograph. */}
+      <Navbar overlay />
 
       <main id="main">
         <PageHero

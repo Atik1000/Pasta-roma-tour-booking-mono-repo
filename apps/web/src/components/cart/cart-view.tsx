@@ -297,8 +297,11 @@ export function CartView() {
           <CardContent className="flex flex-col gap-5 p-6">
             <div className="flex items-center justify-between">
               <h2 className="font-display text-lg font-semibold">Order Summary</h2>
+              {/* "Items" is the header badge's word, and that counts lines.
+                  This chip counts seats, so it has to say so — the two sat a
+                  few centimetres apart reading 3 and "6 items". */}
               <span className="bg-muted text-muted-foreground rounded-full px-2.5 py-1 text-xs">
-                {cart.totalTickets} items
+                {cart.totalTickets} {cart.totalTickets === 1 ? 'ticket' : 'tickets'}
               </span>
             </div>
 

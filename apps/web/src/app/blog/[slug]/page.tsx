@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { Markdown, Thumbnail } from '@pasta/ui';
@@ -64,10 +65,25 @@ export default async function BlogArticlePage({ params }: { params: Params }) {
                   {formatDate(post.publishedAt)}
                 </span>
               ) : null}
-              {post.categories[0] ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <Tag className="size-4" aria-hidden />
-                  {post.categories[0]}
+              {/*
+                All of them. This showed `categories[0]` alone, so an article
+                filed under three categories admitted to one — and the sidebar
+                offered filters that led back to an article claiming to belong
+                somewhere else. Each is a link, so the tag row also works as
+                "more like this".
+              */}
+              {post.categories.length > 0 ? (
+                <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                  <Tag className="size-4 shrink-0" aria-hidden />
+                  {post.categories.map((name) => (
+                    <Link
+                      key={name}
+                      href={`/blog?category=${encodeURIComponent(name)}`}
+                      className="hover:text-primary underline-offset-4 hover:underline"
+                    >
+                      {name}
+                    </Link>
+                  ))}
                 </span>
               ) : null}
             </div>

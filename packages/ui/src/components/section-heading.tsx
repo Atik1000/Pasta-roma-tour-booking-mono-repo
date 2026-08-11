@@ -31,6 +31,15 @@ export interface SectionHeadingProps {
   eyebrow?: React.ReactNode;
   laurels?: boolean;
   as?: 'h1' | 'h2' | 'h3';
+  /**
+   * `inverse` for headings sitting on a photograph.
+   *
+   * The description is `text-muted-foreground` by default — a mid grey chosen
+   * against the cream page, and unreadable over a sunset. A parent class cannot
+   * fix that, since the colour is set on the paragraph itself, so the whole
+   * palette switches together here instead.
+   */
+  tone?: 'default' | 'inverse';
   className?: string;
 }
 
@@ -41,8 +50,11 @@ export function SectionHeading({
   eyebrow,
   laurels = true,
   as: Heading = 'h2',
+  tone = 'default',
   className,
 }: SectionHeadingProps) {
+  const inverse = tone === 'inverse';
+
   return (
     <div
       className={cn(
@@ -51,23 +63,40 @@ export function SectionHeading({
         className,
       )}
     >
-      {eyebrow ? <p className="text-primary text-sm font-medium tracking-wide">{eyebrow}</p> : null}
+      {eyebrow ? (
+        <p
+          className={cn(
+            'text-sm font-medium tracking-wide',
+            inverse ? 'text-brand-200 drop-shadow' : 'text-primary',
+          )}
+        >
+          {eyebrow}
+        </p>
+      ) : null}
 
       <div className="flex items-center gap-3">
-        {laurels ? <Laurel /> : null}
+        {laurels ? <Laurel className={inverse ? 'text-brand-200' : undefined} /> : null}
         <Heading
           className={cn(
             'font-display text-balance font-semibold',
             Heading === 'h1' ? 'text-4xl sm:text-5xl' : 'text-3xl',
+            inverse && 'text-white drop-shadow-lg',
           )}
         >
           {title}
         </Heading>
-        {laurels ? <Laurel className="-scale-x-100" /> : null}
+        {laurels ? <Laurel className={cn('-scale-x-100', inverse && 'text-brand-200')} /> : null}
       </div>
 
       {description ? (
-        <p className="text-muted-foreground max-w-2xl text-balance">{description}</p>
+        <p
+          className={cn(
+            'max-w-2xl text-balance',
+            inverse ? 'text-white/90 drop-shadow' : 'text-muted-foreground',
+          )}
+        >
+          {description}
+        </p>
       ) : null}
     </div>
   );

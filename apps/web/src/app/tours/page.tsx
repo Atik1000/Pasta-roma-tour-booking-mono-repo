@@ -62,7 +62,8 @@ export default async function ToursPage({ searchParams }: { searchParams: Search
 
   return (
     <>
-      <Navbar />
+      {/* Floats over the page hero photograph. */}
+      <Navbar overlay />
 
       <main id="main">
         <PageHero

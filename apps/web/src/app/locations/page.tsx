@@ -39,7 +39,8 @@ export default async function LocationsPage() {
 
   return (
     <>
-      <Navbar />
+      {/* Floats over the page hero photograph. */}
+      <Navbar overlay />
 
       <main id="main">
         <PageHero

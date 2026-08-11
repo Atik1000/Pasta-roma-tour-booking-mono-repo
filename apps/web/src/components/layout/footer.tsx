@@ -5,10 +5,11 @@ import { Clock, Facebook, Instagram, Mail, MapPin, Phone, Youtube } from 'lucide
 import { SkylineBackdrop, TripAdvisorMark, Wordmark } from './brand';
 
 const QUICK_LINKS = [
-  { label: 'Search Tours', href: '/tours' },
+  { label: 'Home', href: '/' },
+  { label: 'Tours', href: '/tours' },
   { label: 'Locations', href: '/locations' },
-  { label: 'Products', href: '/products' },
   { label: 'Blogs', href: '/blog' },
+  { label: 'My Bookings', href: '/my-bookings' },
   { label: 'Gift Cards', href: '/gift-cards' },
   { label: 'Privacy Policy', href: '/privacy' },
   { label: 'Terms & Conditions', href: '/terms' },

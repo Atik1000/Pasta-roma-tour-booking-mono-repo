@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 
-import { Categories } from '@/components/home/categories';
 import { CtaBand } from '@/components/home/cta-band';
 import { Destinations, type DestinationTile } from '@/components/home/destinations';
 import { Hero } from '@/components/home/hero';
@@ -72,7 +71,9 @@ export default async function HomePage() {
         <Hero />
         <TrendingTours tours={trending.data} />
         <Destinations destinations={destinations} currency={currency} />
-        <Categories />
+        {/* "Browse by Category" sat here. It was struck: the categories it
+            offered duplicated the destination tiles above and the filters on
+            the catalogue page, three rows apart. */}
         <WhyUs />
         {/* Sample testimonials until real ones are collected — see reviews.tsx. */}
         <Reviews />

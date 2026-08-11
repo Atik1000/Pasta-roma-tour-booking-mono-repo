@@ -47,7 +47,8 @@ export default async function ContentPageRoute({ params }: { params: Params }) {
 
   return (
     <>
-      <Navbar />
+      {/* Floats over the page hero photograph. */}
+      <Navbar overlay />
 
       <main id="main">
         <PageHero title={page.title} description={page.description} laurels={false} />

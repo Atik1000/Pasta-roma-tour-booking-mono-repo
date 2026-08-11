@@ -8,7 +8,7 @@ import { create } from 'zustand';
 import { browserApi } from '@/lib/browser-api';
 
 interface CartCountState {
-  /** Tickets in the cart, or `null` before the first load. */
+  /** Lines in the cart, or `null` before the first load. */
   count: number | null;
   /** Guards the one-time fetch so N mounted navbars make one request. */
   isLoading: boolean;
@@ -24,14 +24,15 @@ interface CartCountState {
  * a count without every page having to thread one down: any component that
  * receives a fresh `Cart` calls `sync`, and the badge updates wherever it is.
  *
- * `totalTickets` is used rather than `items.length` — the badge counts
- * tickets, so three seats on one departure reads as 3, not 1.
+ * The badge counts *lines*, not seats: `items.length`, so three tickets on one
+ * departure reads as 1. It used to report `totalTickets`, which made the badge
+ * disagree with the cart page beside it — a basket holding one tour showed a 3.
  */
 export const useCartStore = create<CartCountState>((set, get) => ({
   count: null,
   isLoading: false,
 
-  sync: (cart) => set({ count: cart.totalTickets }),
+  sync: (cart) => set({ count: cart.items.length }),
 
   hydrate: async () => {
     if (get().count !== null || get().isLoading) return;
@@ -39,7 +40,7 @@ export const useCartStore = create<CartCountState>((set, get) => ({
     set({ isLoading: true });
     try {
       const cart = await browserApi.cart.get();
-      set({ count: cart.totalTickets });
+      set({ count: cart.items.length });
     } catch {
       // A guest with no cart yet is the common case, not an error.
       set({ count: 0 });

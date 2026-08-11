@@ -26,9 +26,17 @@ import { CURRENCIES } from '@/lib/currency';
 
 import { Wordmark } from './brand';
 
+/**
+ * The first entry sits before the Locations menu and the rest after it, which
+ * is why the list is sliced rather than mapped whole.
+ *
+ * "Search Tours" and "Products" were the old labels. Products only ever
+ * redirected to the catalogue, so the catalogue took its name and the leading
+ * slot became the home link it was always doing duty as.
+ */
 const NAV_LINKS = [
-  { label: 'Search Tours', href: '/tours' },
-  { label: 'Products', href: '/products' },
+  { label: 'Home', href: '/' },
+  { label: 'Tours', href: '/tours' },
   { label: 'Blogs', href: '/blog' },
 ] as const;
 
@@ -65,7 +73,10 @@ export function Navbar({ overlay = false }: NavbarProps) {
     };
   }, []);
 
-  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  // Home is an exact match on purpose: every path starts with "/", so the
+  // prefix test would light it up on every page of the site.
+  const isActive = (href: string) =>
+    href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`);
 
   /**
    * Overlaying a photograph, not a gradient.
@@ -202,7 +213,7 @@ export function Navbar({ overlay = false }: NavbarProps) {
             Cart
             {cartCount > 0 ? (
               <span
-                aria-label={`${cartCount} ${cartCount === 1 ? 'ticket' : 'tickets'} in your cart`}
+                aria-label={`${cartCount} ${cartCount === 1 ? 'item' : 'items'} in your cart`}
                 className="bg-danger absolute -top-2 left-3 flex size-5 items-center justify-center rounded-full text-[0.625rem] font-semibold text-white"
               >
                 {cartCount}
@@ -210,10 +221,16 @@ export function Navbar({ overlay = false }: NavbarProps) {
             ) : null}
           </Link>
 
+          {/*
+            There are no customer accounts — checkout is guest-only and
+            bookings are found by email. "Login" therefore promised something
+            the site does not have, and led to a page whose only real job was
+            to point at the booking lookup. It goes straight there now.
+          */}
           <Button asChild size="sm" className="hidden sm:inline-flex">
-            <Link href="/login">
+            <Link href="/my-bookings">
               <User className="size-4" aria-hidden />
-              Login
+              My Bookings
             </Link>
           </Button>
 
@@ -237,7 +254,7 @@ export function Navbar({ overlay = false }: NavbarProps) {
             <SheetContent side="right" className="flex flex-col gap-6">
               <Wordmark />
               <ul className="flex flex-col gap-1">
-                {[{ label: 'Search Tours', href: '/tours' }, ...NAV_LINKS.slice(1)].map((link) => (
+                {[...NAV_LINKS, { label: 'Cart', href: '/cart' }].map((link) => (
                   <li key={link.href}>
                     <SheetClose asChild>
                       <Link
@@ -249,30 +266,12 @@ export function Navbar({ overlay = false }: NavbarProps) {
                     </SheetClose>
                   </li>
                 ))}
-                <li>
-                  <SheetClose asChild>
-                    <Link
-                      href="/cart"
-                      className="rounded-field hover:bg-muted block px-3 py-2.5 text-sm"
-                    >
-                      Cart
-                    </Link>
-                  </SheetClose>
-                </li>
-                <li>
-                  <SheetClose asChild>
-                    <Link
-                      href="/my-bookings"
-                      className="rounded-field hover:bg-muted block px-3 py-2.5 text-sm"
-                    >
-                      My Bookings
-                    </Link>
-                  </SheetClose>
-                </li>
               </ul>
-              <Button asChild block>
-                <Link href="/login">Login</Link>
-              </Button>
+              <SheetClose asChild>
+                <Button asChild block>
+                  <Link href="/my-bookings">My Bookings</Link>
+                </Button>
+              </SheetClose>
             </SheetContent>
           </Sheet>
         </div>
