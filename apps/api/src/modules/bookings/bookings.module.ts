@@ -66,6 +66,16 @@ export class TravellerBookingDto {
   @ApiProperty({ type: [BookingTourDto] }) tours!: BookingTourDto[];
 }
 
+export class LookupResultDto {
+  /**
+   * A signed token for the same address, so the traveller can then download
+   * their tickets and invoices. The PDF routes still demand it — the address
+   * alone opens the list, never the documents.
+   */
+  @ApiProperty() token!: string;
+  @ApiProperty({ type: [TravellerBookingDto] }) bookings!: TravellerBookingDto[];
+}
+
 interface LookupTokenPayload {
   email: string;
   typ: 'booking-lookup';
@@ -74,11 +84,19 @@ interface LookupTokenPayload {
 /**
  * Traveller-facing booking lookup.
  *
- * The design shows bookings appearing for whoever types an email address, which
- * would expose any customer's travel dates and references to a stranger.
- * Instead the address receives a signed, short-lived link, and only the holder
- * of that link sees the bookings. The response is identical whether or not the
- * address is known, so the endpoint cannot enumerate customers either.
+ * Typing an email address returns that address's bookings directly — every
+ * status, newest first. This is the behaviour the site owner asked for.
+ *
+ * Understand what it costs, because it is not reversible once customers rely
+ * on it: anyone who types an address sees the bookings behind it — traveller
+ * name, tours, travel dates, meeting points and what was paid — and can test
+ * addresses to learn who has booked. The mitigations are that the endpoint is
+ * rate limited, and that tickets and invoices still require the signed token
+ * issued alongside the list, so an address alone never yields the documents.
+ *
+ * `requestLink` and the token route are kept: links already sitting in
+ * customers' inboxes must keep working, and the token is what the PDF routes
+ * accept.
  */
 @Injectable()
 export class BookingsService {
@@ -128,6 +146,24 @@ export class BookingsService {
     });
   }
 
+  /**
+   * Every booking for an address, whatever state it is in.
+   *
+   * Deliberately unfiltered by status: a traveller looking up their history
+   * wants the cancelled one and the one still awaiting payment as much as the
+   * confirmed one, and each row carries its own status for the page to label.
+   */
+  async byEmail(email: string): Promise<LookupResultDto> {
+    const normalised = email.toLowerCase().trim();
+
+    const token = this.jwt.sign(
+      { email: normalised, typ: 'booking-lookup' } satisfies LookupTokenPayload,
+      { secret: this.secret(), expiresIn: LOOKUP_TTL_MINUTES * 60 },
+    );
+
+    return { token, bookings: await this.bookingsFor(normalised) };
+  }
+
   async byToken(token: string): Promise<TravellerBookingDto[]> {
     let email: string;
 
@@ -139,6 +175,10 @@ export class BookingsService {
       throw new UnauthorizedException('That link is invalid or has expired.');
     }
 
+    return this.bookingsFor(email);
+  }
+
+  private async bookingsFor(email: string): Promise<TravellerBookingDto[]> {
     const bookings = await this.prisma.booking.findMany({
       where: { customer: { email }, deletedAt: null },
       orderBy: { bookedAt: 'desc' },
@@ -196,7 +236,22 @@ export class BookingsController {
   constructor(private readonly bookings: BookingsService) {}
 
   @Post('lookup')
-  // Tight limit: this endpoint sends mail to an address the caller supplies.
+  /**
+   * Rate limited because the address is the only credential: without a ceiling
+   * a script could walk a list of addresses and harvest whoever has booked.
+   * Ten in five minutes is far above what a traveller mistyping their own
+   * address needs, and far below what makes bulk testing worthwhile.
+   */
+  @Throttle({ default: { limit: 10, ttl: 300_000 } })
+  @ApiOperation({ summary: 'The bookings for an address, in every status' })
+  @ApiEnvelopeResponse(LookupResultDto)
+  lookup(@Body() dto: LookupRequestDto): Promise<LookupResultDto> {
+    return this.bookings.byEmail(dto.email);
+  }
+
+  @Post('lookup/link')
+  // Still mails a link, so it keeps the tighter ceiling: this one sends
+  // outbound mail to an address the caller supplies.
   @Throttle({ default: { limit: 3, ttl: 300_000 } })
   @ApiOperation({ summary: 'Email a secure link to the bookings for an address' })
   @ApiEnvelopeResponse(MessageDto)

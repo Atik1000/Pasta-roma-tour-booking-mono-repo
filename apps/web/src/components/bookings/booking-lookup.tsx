@@ -35,10 +35,21 @@ import { saveBlob } from '@/lib/download';
  */
 export function BookingLookup() {
   const params = useSearchParams();
-  const token = params.get('token');
+  const linkToken = params.get('token');
 
   const [email, setEmail] = React.useState('');
-  const [sentTo, setSentTo] = React.useState<string | null>(null);
+  /**
+   * Kept in state rather than read from the URL, because there are now two
+   * ways to arrive at a booking: an emailed link carries its token in the
+   * query string, while a direct lookup is handed one in the response. The
+   * downloads need a token either way.
+   */
+  const [token, setToken] = React.useState<string | null>(linkToken);
+  const [searchedFor, setSearchedFor] = React.useState<string | null>(null);
+  // Declared with the rest of the state because `submit` sets it: leaving it
+  // below the handler put it in the temporal dead zone for anyone reading top
+  // to bottom, even though it resolves by the time a click can happen.
+  const [showLookup, setShowLookup] = React.useState(false);
   const [bookings, setBookings] = React.useState<TravellerBooking[] | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
   const [expanded, setExpanded] = React.useState<string | null>(null);
@@ -48,13 +59,13 @@ export function BookingLookup() {
 
   // Arriving from the emailed link: the token is the credential, not the address.
   React.useEffect(() => {
-    if (!token) return;
+    if (!linkToken) return;
 
     let cancelled = false;
     setIsLoading(true);
 
     void browserApi.bookings
-      .byToken(token)
+      .byToken(linkToken)
       .then((result) => {
         if (!cancelled) setBookings(result);
       })
@@ -71,7 +82,7 @@ export function BookingLookup() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [linkToken]);
 
   /**
    * Documents are fetched with the same signed token that revealed the
@@ -114,10 +125,19 @@ export function BookingLookup() {
     setIsLoading(true);
 
     try {
-      await browserApi.bookings.requestLink(value);
-      setSentTo(value);
-    } catch {
-      setError('We could not send that link. Please try again.');
+      const result = await browserApi.bookings.lookup(value);
+
+      setBookings(result.bookings);
+      setToken(result.token);
+      setSearchedFor(value);
+      // Collapse the search box only when there is something to show behind it.
+      setShowLookup(result.bookings.length === 0);
+    } catch (caught: unknown) {
+      // The endpoint is rate limited, and "try again" is unhelpful advice when
+      // the answer is "wait" — so the server's own message is preferred.
+      setError(
+        isApiClientError(caught) ? caught.message : 'We could not look that up. Please try again.',
+      );
     } finally {
       setIsLoading(false);
     }
@@ -127,7 +147,6 @@ export function BookingLookup() {
   // screen — the bookings are. It collapses to a one-line "search a different
   // address" rather than sitting above the results taking the eye first.
   const hasResults = bookings !== null && bookings.length > 0;
-  const [showLookup, setShowLookup] = React.useState(false);
 
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_20rem]">
@@ -172,7 +191,7 @@ export function BookingLookup() {
                   </div>
                   <Button
                     type="submit"
-                    isLoading={isLoading && !token}
+                    isLoading={isLoading && !linkToken}
                     leadingIcon={<Search aria-hidden />}
                   >
                     Find Bookings
@@ -185,7 +204,7 @@ export function BookingLookup() {
                   </p>
                 ) : (
                   <p id="lookup-hint" className="text-muted-foreground mt-2 text-sm">
-                    We&apos;ll email a secure link to view all bookings made with this address.
+                    Every booking made with this address — confirmed, pending and cancelled.
                   </p>
                 )}
               </form>
@@ -193,17 +212,23 @@ export function BookingLookup() {
           </CardContent>
         </Card>
 
-        {sentTo ? (
+        {/*
+          An address with nothing behind it is the one case the results list
+          cannot speak for, and "0 bookings" alone reads like a failure. Naming
+          the address searched makes the usual cause — a typo, or the other
+          address they booked with — the obvious next thing to try.
+        */}
+        {searchedFor && bookings?.length === 0 ? (
           <p
             role="status"
-            className="rounded-card border-success/30 bg-success-soft text-success-foreground border px-4 py-3 text-sm"
+            className="rounded-card border-border bg-muted text-muted-foreground border px-4 py-3 text-sm"
           >
-            If <strong>{sentTo}</strong> has bookings with us, a secure link is on its way. It
-            expires in 30 minutes.
+            No bookings found for <strong>{searchedFor}</strong>. Check the spelling, or try the
+            address you used when you booked.
           </p>
         ) : null}
 
-        {isLoading && token ? (
+        {isLoading ? (
           <div className="flex flex-col gap-5">
             {Array.from({ length: 2 }, (_, index) => (
               <Skeleton key={index} className="h-48 w-full" />
