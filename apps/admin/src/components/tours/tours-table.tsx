@@ -229,7 +229,23 @@ export function ToursTable({ locations }: ToursTableProps) {
       {
         id: 'status',
         header: 'Status',
-        cell: ({ row }) => <StatusPill status={row.original.status} />,
+        // A tour with no departure ahead of it cannot be booked whatever the
+        // pill says, and that is invisible from the tour record alone — so the
+        // row carries the warning rather than leaving it to be discovered on
+        // the public site.
+        cell: ({ row }) => (
+          <div className="flex min-w-0 flex-col items-start gap-1">
+            <StatusPill status={row.original.status} />
+            {row.original.upcomingDepartures === 0 ? (
+              <Link
+                href={`/tours/${row.original.id}`}
+                className="text-warning-foreground bg-warning-soft whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium"
+              >
+                No departures
+              </Link>
+            ) : null}
+          </div>
+        ),
       },
       {
         id: 'updated',

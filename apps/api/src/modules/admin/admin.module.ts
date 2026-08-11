@@ -34,6 +34,7 @@ import {
   SaveBlogDto,
   SaveLocationDto,
   SaveSlotDto,
+  SaveSlotScheduleDto,
   SaveTourDto,
   SaveTourImagesDto,
   UpdateBookingDto,
@@ -53,6 +54,7 @@ import {
   ListAdminBookingsQueryDto,
   ListAdminPaymentsQueryDto,
   ListAdminToursQueryDto,
+  TourSlotSummaryDto,
 } from './dto/admin.dto';
 
 /**
@@ -144,6 +146,13 @@ export class AdminController {
   @ApiOperation({ summary: 'Departures for a tour on one date' })
   tourSlots(@Param('id', ParseUUIDPipe) id: string, @Query('date') date?: string) {
     return this.admin.tourSlots(id, date);
+  }
+
+  @Get('tours/:id/slots/summary')
+  @ApiOperation({ summary: 'Whether a tour has any departure left to sell' })
+  @ApiEnvelopeResponse(TourSlotSummaryDto)
+  tourSlotSummary(@Param('id', ParseUUIDPipe) id: string): Promise<TourSlotSummaryDto> {
+    return this.admin.tourSlotSummary(id);
   }
 
   // --- bookings --------------------------------------------------------------
@@ -288,6 +297,13 @@ export class AdminController {
   @ApiOperation({ summary: 'Add a departure time' })
   createSlot(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SaveSlotDto) {
     return this.write.createSlot(id, dto);
+  }
+
+  @Post('tours/:id/slots/schedule')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Add a run of departures across dates and times' })
+  createSlotSchedule(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SaveSlotScheduleDto) {
+    return this.write.createSlotSchedule(id, dto);
   }
 
   @Patch('slots/:slotId')

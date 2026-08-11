@@ -6,27 +6,29 @@ import { Button, Card, CardContent, Input, Skeleton, useToast } from '@pasta/ui'
 import { isApiClientError, type AdminSlot } from '@pasta/api-client';
 import { formatClockTime, formatDate } from '@pasta/utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronLeft, ChevronRight, Info, Plus, Trash2, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Info,
+  Plus,
+  Trash2,
+  X,
+} from 'lucide-react';
 
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
 import { adminApi } from '@/lib/session';
 
-/** Today, as YYYY-MM-DD in the browser's own timezone. */
-function today(): string {
-  const now = new Date();
-  return [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0'),
-  ].join('-');
-}
-
-/** The given day shifted by `days`, still as YYYY-MM-DD. */
-function shiftDay(day: string, days: number): string {
-  const date = new Date(`${day}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
+import {
+  ScheduleBuilder,
+  defaultSchedule,
+  scheduleDates,
+  scheduleTimes,
+  shiftDay,
+  today,
+  type SlotSchedule,
+} from './schedule-builder';
 
 /**
  * Departures for one date.
@@ -39,6 +41,7 @@ function shiftDay(day: string, days: number): string {
 export function TourSlotsPanel({ tourId }: { tourId?: string }) {
   const [date, setDate] = React.useState(today());
   const [draft, setDraft] = React.useState<{ time: string; capacity: string } | null>(null);
+  const [schedule, setSchedule] = React.useState<SlotSchedule>(defaultSchedule);
   const [editing, setEditing] = React.useState<Record<string, string>>({});
   const [pendingDelete, setPendingDelete] = React.useState<AdminSlot | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -46,11 +49,20 @@ export function TourSlotsPanel({ tourId }: { tourId?: string }) {
   const toast = useToast();
 
   const queryClient = useQueryClient();
-  const key = ['admin', 'tours', tourId, 'slots', date];
+  // Every query below hangs off this prefix, so one invalidation refreshes the
+  // visible date and the summary together.
+  const slotsKey = ['admin', 'tours', tourId, 'slots'];
+  const key = [...slotsKey, date];
 
   const slots = useQuery({
     queryKey: key,
     queryFn: () => adminApi.admin.tourSlots(tourId!, date),
+    enabled: Boolean(tourId),
+  });
+
+  const summary = useQuery({
+    queryKey: [...slotsKey, 'summary'],
+    queryFn: () => adminApi.admin.tourSlotSummary(tourId!),
     enabled: Boolean(tourId),
   });
 
@@ -60,7 +72,29 @@ export function TourSlotsPanel({ tourId }: { tourId?: string }) {
     toast.error('That change was not saved', message);
   }
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: key });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: slotsKey });
+
+  const applySchedule = useMutation({
+    mutationFn: () =>
+      adminApi.admin.createSlotSchedule(tourId!, {
+        dates: scheduleDates(schedule),
+        times: scheduleTimes(schedule),
+        capacity: Number(schedule.capacity) || 0,
+      }),
+    onSuccess: (result) => {
+      setError(null);
+      toast.success(
+        `${result.created} ${result.created === 1 ? 'departure' : 'departures'} added`,
+        result.skipped
+          ? `${result.skipped} already existed and were left as they are.`
+          : 'Travellers can book these dates now.',
+      );
+      // Land on the first day of the run, so the table below shows the work.
+      setDate(scheduleDates(schedule)[0] ?? date);
+      void invalidate();
+    },
+    onError: (caught) => fail(caught, 'Could not add those departures.'),
+  });
 
   const create = useMutation({
     mutationFn: (payload: { time: string; capacity: number }) =>
@@ -137,6 +171,42 @@ export function TourSlotsPanel({ tourId }: { tourId?: string }) {
           </p>
         ) : (
           <>
+            {summary.data && summary.data.upcoming === 0 ? (
+              <p
+                role="status"
+                className="border-warning/30 bg-warning-soft text-warning-foreground rounded-field mb-4 flex items-start gap-2.5 border p-3 text-sm"
+              >
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <span>
+                  <strong className="block">This tour has no departures ahead of it.</strong>
+                  Until one is scheduled it cannot be booked on the website, published or not. Add a
+                  schedule below.
+                </span>
+              </p>
+            ) : summary.data?.nextDate ? (
+              <p className="text-muted-foreground mb-4 text-sm">
+                {summary.data.upcoming} upcoming{' '}
+                {summary.data.upcoming === 1 ? 'departure' : 'departures'}, next on{' '}
+                {formatDate(summary.data.nextDate)}
+                {summary.data.nextTime ? ` at ${formatClockTime(summary.data.nextTime)}` : ''}.
+              </p>
+            ) : null}
+
+            <div className="rounded-field border-border mb-5 border p-4">
+              <h3 className="text-sm font-semibold">Schedule a run of departures</h3>
+              <p className="text-muted-foreground mb-4 mt-0.5 text-sm">
+                Fill a stretch of the calendar in one go. Dates that already have a departure at
+                that time keep the capacity they have.
+              </p>
+
+              <ScheduleBuilder
+                value={schedule}
+                onChange={setSchedule}
+                onApply={() => applySchedule.mutate()}
+                isApplying={applySchedule.isPending}
+              />
+            </div>
+
             {/* The design pairs the date with step arrows — checking a run of
                 consecutive days is the common case, and clicking through a date
                 picker for each one is slow. */}

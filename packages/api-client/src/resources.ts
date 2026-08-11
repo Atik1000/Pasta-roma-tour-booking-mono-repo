@@ -375,6 +375,8 @@ export interface AdminTour {
   priceEurMinor: number;
   status: 'PUBLISHED' | 'DRAFT';
   coverImage: string | null;
+  /** Departures from today onwards. Zero means travellers cannot book it. */
+  upcomingDepartures: number;
   updatedAt: string;
 }
 
@@ -746,8 +748,23 @@ export class AdminResource {
     return this.http.get<AdminSlot[]>(`/admin/tours/${id}/slots`, { params: { date } });
   }
 
+  tourSlotSummary(id: string): Promise<TourSlotSummary> {
+    return this.http.get<TourSlotSummary>(`/admin/tours/${id}/slots/summary`);
+  }
+
   createSlot(tourId: string, payload: SaveSlotPayload): Promise<{ id: string }> {
     return this.http.post<{ id: string }>(`/admin/tours/${tourId}/slots`, payload);
+  }
+
+  /** Every date × time combination at once; existing departures are left alone. */
+  createSlotSchedule(
+    tourId: string,
+    payload: SaveSlotSchedulePayload,
+  ): Promise<{ created: number; skipped: number }> {
+    return this.http.post<{ created: number; skipped: number }>(
+      `/admin/tours/${tourId}/slots/schedule`,
+      payload,
+    );
   }
 
   updateSlot(slotId: string, payload: SaveSlotPayload): Promise<{ message: string }> {
@@ -844,6 +861,21 @@ export interface SaveSlotPayload {
   date: string;
   time: string;
   capacity: number;
+}
+
+export interface SaveSlotSchedulePayload {
+  /** Calendar dates, YYYY-MM-DD. */
+  dates: string[];
+  /** 24-hour clock times, HH:mm. Every time runs on every date. */
+  times: string[];
+  capacity: number;
+}
+
+export interface TourSlotSummary {
+  /** Departures from today onwards — zero means the tour cannot be booked. */
+  upcoming: number;
+  nextDate: string | null;
+  nextTime: string | null;
 }
 
 export interface SaveLocationPayload {

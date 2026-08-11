@@ -37,6 +37,14 @@ import {
 
 import { adminApi } from '@/lib/session';
 
+import {
+  ScheduleBuilder,
+  defaultSchedule,
+  scheduleDates,
+  scheduleProblem,
+  scheduleTimes,
+  type SlotSchedule,
+} from './schedule-builder';
 import { SortableTextList } from './sortable-text-list';
 import { TourGalleryPanel } from './tour-gallery-panel';
 import { TourSlotsPanel } from './tour-slots-panel';
@@ -136,6 +144,9 @@ export function TourEditor({
   const [error, setError] = React.useState<string | null>(null);
   const [step, setStep] = React.useState(0);
   const [furthest, setFurthest] = React.useState(0);
+  // Create only: departures cannot be written before the tour exists, so the
+  // step collects them and the save applies them straight afterwards.
+  const [schedule, setSchedule] = React.useState<SlotSchedule>(defaultSchedule);
 
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -166,12 +177,9 @@ export function TourEditor({
     },
     onSuccess: async (result) => {
       setError(null);
-      toast.success(
-        value.id ? 'Tour saved' : 'Tour created',
-        value.id ? 'Your changes are live.' : 'You can now add photos and departures.',
-      );
 
       if (value.id) {
+        toast.success('Tour saved', 'Your changes are live.');
         // Queries here are cached for a minute and nothing else invalidates
         // them, so without this the tour list, the stat cards and this tour's
         // own detail keep serving the pre-save snapshot. A saved cover photo
@@ -184,6 +192,38 @@ export function TourEditor({
       if (result.gallery.length) {
         await adminApi.admin.setTourImages(result.id, result.gallery);
       }
+
+      // Neither could the departures, and a tour with none of them is not
+      // bookable however it is published — which is exactly how tours used to
+      // reach the site with nothing to sell. It is still not worth throwing the
+      // saved tour away over: a failure here says so and leaves the edit page's
+      // Departures step to finish the job.
+      let departures = 0;
+      try {
+        if (!scheduleProblem(schedule)) {
+          const added = await adminApi.admin.createSlotSchedule(result.id, {
+            dates: scheduleDates(schedule),
+            times: scheduleTimes(schedule),
+            capacity: Number(schedule.capacity) || 0,
+          });
+          departures = added.created;
+        }
+      } catch (caught) {
+        toast.error(
+          'Departures were not added',
+          isApiClientError(caught)
+            ? caught.message
+            : 'The tour was created. Add its departures from the step below.',
+        );
+      }
+
+      toast.success(
+        'Tour created',
+        departures
+          ? `${departures} ${departures === 1 ? 'departure is' : 'departures are'} on sale.`
+          : 'Add departures below — a tour with none cannot be booked.',
+      );
+
       await queryClient.invalidateQueries({ queryKey: ['admin', 'tours'] });
       patch({ id: result.id });
       router.replace(`/tours/${result.id}`);
@@ -531,21 +571,31 @@ export function TourEditor({
   ];
 
   /**
-   * Departures only exist once the tour does — a departure is a row pointing at
-   * a tour id. Rather than show the step greyed out with no explanation, the
-   * wizard simply does not include it while creating; saving lands on the edit
-   * page, where it is the last step.
+   * Departures are rows pointing at a tour id, so while creating one there is
+   * nothing to attach them to yet. The step used to be left out of the create
+   * wizard entirely for that reason — and that is how tours reached the public
+   * site unbookable, since nothing on the way out said a tour needs departures
+   * at all. So the step is always here: creating collects the schedule and the
+   * save writes it the moment the tour exists; editing manages the real rows.
    */
-  if (value.id) {
-    steps.push({
-      id: 'slots',
-      label: 'Departures',
-      title: 'Departures',
-      description: 'The dates and times this tour runs, and how many seats each one holds.',
-      complete: true,
-      render: () => <TourSlotsPanel tourId={value.id} />,
-    });
-  }
+  steps.push({
+    id: 'slots',
+    label: 'Departures',
+    title: 'Departures',
+    description: 'The dates and times this tour runs, and how many seats each one holds.',
+    required: true,
+    complete: mode === 'edit' || !scheduleProblem(schedule),
+    render: () =>
+      mode === 'edit' ? (
+        <TourSlotsPanel tourId={value.id} />
+      ) : (
+        <ScheduleBuilder
+          value={schedule}
+          onChange={setSchedule}
+          footnote="These departures are created with the tour. You can add more, change their capacity or remove them afterwards."
+        />
+      ),
+  });
 
   const current = steps[Math.min(step, steps.length - 1)];
   const isLast = step >= steps.length - 1;
@@ -669,6 +719,16 @@ export function TourEditor({
           {blocked ? (
             <p className="text-muted-foreground text-xs" role="status">
               Fill in the required fields to continue.
+            </p>
+          ) : null}
+
+          {/* The other half of why a new tour cannot be booked: it is saved as
+              a draft unless the switch above is on, and the switch sits at the
+              top of a six-step form where it is easily missed. */}
+          {isLast && mode === 'create' && !value.published ? (
+            <p className="text-muted-foreground max-w-md text-right text-xs" role="status">
+              This will be saved as a draft and stay hidden from the website. Switch it to Published
+              at the top to sell it.
             </p>
           ) : null}
 

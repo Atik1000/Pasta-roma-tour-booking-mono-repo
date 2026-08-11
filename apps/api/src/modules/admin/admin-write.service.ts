@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { slugify } from '@pasta/utils';
 
 import { BusinessErrorCode, BusinessException } from '../../common/exceptions/business.exception';
@@ -9,12 +9,20 @@ import type {
   SaveBlogDto,
   SaveLocationDto,
   SaveSlotDto,
+  SaveSlotScheduleDto,
   SaveTourDto,
   SaveTourImagesDto,
   UpdateBookingDto,
   UpdatePaymentDto,
   UpsertNoteDto,
 } from './dto/admin-write.dto';
+
+/**
+ * The most departures one schedule may create. A year of three-a-day runs comes
+ * to just over a thousand, so the ceiling sits above that and below anything
+ * that would make a single insert worth worrying about.
+ */
+const MAX_SCHEDULE_SLOTS = 2000;
 
 @Injectable()
 export class AdminWriteService {
@@ -288,6 +296,50 @@ export class AdminWriteService {
       },
       select: { id: true },
     });
+  }
+
+  /**
+   * Adds every (date × time) departure in one write.
+   *
+   * `skipDuplicates` rather than an upsert per row: a date already carrying a
+   * departure at that time keeps the capacity it has, which may include seats
+   * already sold. Re-running a schedule therefore fills the gaps and leaves
+   * everything else alone, so it is safe to extend a month at a time.
+   */
+  async createSlotSchedule(
+    tourId: string,
+    dto: SaveSlotScheduleDto,
+  ): Promise<{ created: number; skipped: number }> {
+    const tour = await this.prisma.tour.findFirst({
+      where: { id: tourId, deletedAt: null },
+      select: { id: true },
+    });
+
+    if (!tour) throw new NotFoundException('That tour could not be found.');
+
+    const dates = [...new Set(dto.dates)];
+    const times = [...new Set(dto.times)];
+
+    const rows = dates.flatMap((date) =>
+      times.map((time) => ({
+        tourId,
+        date: new Date(`${date}T00:00:00.000Z`),
+        time,
+        capacity: dto.capacity,
+      })),
+    );
+
+    // The DTO caps each list on its own, so the two together still need a
+    // ceiling — 366 × 24 would be a single insert of nearly nine thousand rows.
+    if (rows.length > MAX_SCHEDULE_SLOTS) {
+      throw new BadRequestException(
+        `That schedule would create more than ${MAX_SCHEDULE_SLOTS} departures. Narrow the dates or the times.`,
+      );
+    }
+
+    const { count } = await this.prisma.tourSlot.createMany({ data: rows, skipDuplicates: true });
+
+    return { created: count, skipped: rows.length - count };
   }
 
   async updateSlot(slotId: string, dto: SaveSlotDto): Promise<void> {

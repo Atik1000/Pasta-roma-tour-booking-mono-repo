@@ -36,6 +36,8 @@ export {
   type AdminTourDetail,
   type SaveLocationPayload,
   type SaveSlotPayload,
+  type SaveSlotSchedulePayload,
+  type TourSlotSummary,
   type SaveTourPayload,
   type UploadResult,
   type AvailabilityDay,
