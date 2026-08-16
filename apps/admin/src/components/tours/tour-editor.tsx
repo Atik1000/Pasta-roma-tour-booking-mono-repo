@@ -213,7 +213,7 @@ export function TourEditor({
           'Departures were not added',
           isApiClientError(caught)
             ? caught.message
-            : 'The tour was created. Add its departures from the step below.',
+            : 'The tour was created. Open it to add its departures.',
         );
       }
 
@@ -221,12 +221,13 @@ export function TourEditor({
         'Tour created',
         departures
           ? `${departures} ${departures === 1 ? 'departure is' : 'departures are'} on sale.`
-          : 'Add departures below — a tour with none cannot be booked.',
+          : 'Open the tour to add departures — one with none cannot be booked.',
       );
 
       await queryClient.invalidateQueries({ queryKey: ['admin', 'tours'] });
-      patch({ id: result.id });
-      router.replace(`/tours/${result.id}`);
+      // Back to the list rather than into the new tour's editor: creating one
+      // tour is usually the middle of a session, not the end of it.
+      router.replace('/tours');
     },
     onError: (caught: unknown) => {
       const message = isApiClientError(caught)
