@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import { isApiClientError } from '@pasta/api-client';
@@ -110,15 +109,10 @@ export function LoginForm() {
             />
           </FormField>
 
-          <div className="flex items-center justify-between gap-4">
-            <label className="flex items-center gap-2.5 text-sm">
-              <Checkbox name="remember" />
-              Keep me signed in
-            </label>
-            <Link href="/forgot-password" className="text-primary text-sm hover:underline">
-              Forgot password?
-            </Link>
-          </div>
+          <label className="flex items-center gap-2.5 text-sm">
+            <Checkbox name="remember" />
+            Keep me signed in
+          </label>
 
           <Button type="submit" size="lg" block isLoading={isPending}>
             Sign in
