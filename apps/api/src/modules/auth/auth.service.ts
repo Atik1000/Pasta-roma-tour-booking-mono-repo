@@ -1,7 +1,13 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
 import { hash, verify } from '@node-rs/argon2';
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 
 import type { AuthenticatedUser } from '../../common/decorators/auth.decorators';
 import { PrismaService } from '../../database/prisma.service';
@@ -117,6 +123,37 @@ export class AuthService {
   }
 
   /**
+   * Updates the signed-in user's own name and email address.
+   *
+   * The role is deliberately not editable here — an EDITOR must not be able to
+   * promote themselves by posting to their own profile.
+   */
+  async updateProfile(userId: string, name: string, email: string): Promise<AuthUserDto> {
+    const user = await this.prisma.user.findFirst({ where: { id: userId, deletedAt: null } });
+    if (!user) throw new UnauthorizedException('Your session is invalid or has expired.');
+
+    const nextEmail = email.toLowerCase().trim();
+
+    if (nextEmail !== user.email) {
+      const taken = await this.prisma.user.findFirst({
+        where: { email: nextEmail, deletedAt: null, NOT: { id: user.id } },
+        select: { id: true },
+      });
+
+      if (taken) {
+        throw new ConflictException('That email address is already in use.');
+      }
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { name: name.trim(), email: nextEmail },
+    });
+
+    return AuthService.toAuthUser(updated);
+  }
+
+  /**
    * Starts a password reset.
    *
    * Always resolves, whether or not the address exists — the response must not
@@ -199,7 +236,10 @@ export class AuthService {
 
     const matches = await verify(user.passwordHash, currentPassword).catch(() => false);
     if (!matches) {
-      throw new UnauthorizedException('Your current password is incorrect.');
+      // Deliberately not a 401: the client treats that as an expired access
+      // token and burns a refresh round-trip retrying, when the session is
+      // perfectly valid and it is the typed password that is wrong.
+      throw new BadRequestException('Your current password is incorrect.');
     }
 
     await this.prisma.user.update({

@@ -8,6 +8,7 @@ import {
   Inject,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Req,
   Res,
@@ -35,6 +36,7 @@ import {
   MessageResponseDto,
   ResetPasswordDto,
   SessionDto,
+  UpdateProfileDto,
 } from './dto/auth.dto';
 import type { IssuedRefreshToken, SessionContext } from './token.service';
 
@@ -108,6 +110,17 @@ export class AuthController {
   @ApiEnvelopeResponse(AuthUserDto)
   me(@CurrentUser('id') userId: string): Promise<AuthUserDto> {
     return this.auth.me(userId);
+  }
+
+  @Patch('me')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Update your own name and email address' })
+  @ApiEnvelopeResponse(AuthUserDto)
+  updateProfile(
+    @CurrentUser('id') userId: string,
+    @Body() dto: UpdateProfileDto,
+  ): Promise<AuthUserDto> {
+    return this.auth.updateProfile(userId, dto.name, dto.email);
   }
 
   @Post('forgot-password')

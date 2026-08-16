@@ -189,6 +189,18 @@ export class AuthResource {
     return this.http.get<AuthUser>('/auth/me');
   }
 
+  updateProfile(payload: { name: string; email: string }): Promise<AuthUser> {
+    return this.http.patch<AuthUser>('/auth/me', payload);
+  }
+
+  /** Signs every session out server-side, this one included. */
+  changePassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {
+    return this.http.post<{ message: string }>('/auth/change-password', {
+      currentPassword,
+      newPassword,
+    });
+  }
+
   forgotPassword(email: string): Promise<{ message: string }> {
     return this.http.post<{ message: string }>('/auth/forgot-password', { email });
   }

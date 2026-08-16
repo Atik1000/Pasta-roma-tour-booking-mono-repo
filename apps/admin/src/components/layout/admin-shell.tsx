@@ -17,7 +17,7 @@ import {
   SheetTrigger,
 } from '@pasta/ui';
 import { initials } from '@pasta/utils';
-import { LogOut, Menu, Moon, Sun } from 'lucide-react';
+import { LogOut, Menu, Moon, Sun, UserRound } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 
@@ -90,6 +90,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               </DropdownMenuTrigger>
               <DropdownMenuContent>
                 <DropdownMenuLabel>{user?.email ?? 'Not signed in'}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => router.push('/profile')}>
+                  <UserRound aria-hidden />
+                  My Profile
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   destructive

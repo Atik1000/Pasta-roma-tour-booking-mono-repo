@@ -38,6 +38,19 @@ export class ResetPasswordDto {
   password!: string;
 }
 
+export class UpdateProfileDto {
+  @ApiProperty({ example: 'Giulia Rossi' })
+  @IsString()
+  @MinLength(2, { message: 'Enter your name.' })
+  @MaxLength(120)
+  name!: string;
+
+  @ApiProperty({ example: 'admin@pastaromatour.com' })
+  @IsEmail({}, { message: 'Enter a valid email address.' })
+  @MaxLength(255)
+  email!: string;
+}
+
 export class ChangePasswordDto {
   @ApiProperty()
   @IsString()

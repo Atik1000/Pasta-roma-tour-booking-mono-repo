@@ -11,6 +11,8 @@ interface SessionState {
   /** False until the initial refresh attempt has settled. */
   isReady: boolean;
   setSession: (token: string, user: AuthUser) => void;
+  /** Refreshes the account details without touching the token, after a profile edit. */
+  setUser: (user: AuthUser) => void;
   clear: () => void;
   markReady: () => void;
 }
@@ -28,6 +30,7 @@ export const useSession = create<SessionState>((set) => ({
   user: null,
   isReady: false,
   setSession: (accessToken, user) => set({ accessToken, user, isReady: true }),
+  setUser: (user) => set({ user }),
   clear: () => set({ accessToken: null, user: null, isReady: true }),
   markReady: () => set({ isReady: true }),
 }));
