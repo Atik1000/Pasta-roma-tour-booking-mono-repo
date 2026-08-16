@@ -22,8 +22,13 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 export default async function BlogPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const category = Array.isArray(params.category) ? params.category[0] : params.category;
+  // The sidebar's search box submits `q` back to this page; without reading it
+  // here the form round-tripped to an unfiltered list and looked broken.
+  const rawQuery = Array.isArray(params.q) ? params.q[0] : params.q;
+  const query = rawQuery?.trim() || undefined;
+
   const { data: posts } = await safely(
-    api.blog.list({ category, limit: 10 }),
+    api.blog.list({ category, q: query, limit: 10 }),
     {
       data: [],
       meta: {
@@ -51,11 +56,37 @@ export default async function BlogPage({ searchParams }: { searchParams: SearchP
 
         <div className="mx-auto grid max-w-7xl gap-8 px-4 pb-20 sm:px-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:px-8">
           <div className="flex flex-col gap-5">
+            {query || category ? (
+              <p className="text-muted-foreground text-sm" role="status">
+                {posts.length} {posts.length === 1 ? 'article' : 'articles'}
+                {query ? (
+                  <>
+                    {' '}
+                    matching <span className="text-foreground font-medium">“{query}”</span>
+                  </>
+                ) : null}
+                {category ? (
+                  <>
+                    {' '}
+                    in <span className="text-foreground font-medium">{category}</span>
+                  </>
+                ) : null}
+                .{' '}
+                <Link className="text-primary underline underline-offset-4" href="/blog">
+                  Clear
+                </Link>
+              </p>
+            ) : null}
+
             {posts.length === 0 ? (
               <Card>
                 <EmptyState
-                  title="No articles yet"
-                  description="Try another category, or check back soon."
+                  title={query ? 'No articles match that search' : 'No articles yet'}
+                  description={
+                    query
+                      ? 'Try a different word, or browse every article.'
+                      : 'Try another category, or check back soon.'
+                  }
                   action={
                     <Link className="text-primary underline underline-offset-4" href="/blog">
                       View all articles
@@ -124,7 +155,7 @@ export default async function BlogPage({ searchParams }: { searchParams: SearchP
             )}
           </div>
 
-          <BlogSidebar activeCategory={category} />
+          <BlogSidebar activeCategory={category} query={query} />
         </div>
       </main>
 
