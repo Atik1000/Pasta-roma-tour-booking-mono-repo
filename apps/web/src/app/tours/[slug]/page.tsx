@@ -2,21 +2,14 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import {
-  Breadcrumb,
-  Card,
-  CardContent,
-  SectionHeading,
-  Thumbnail,
-  Timeline,
-  TourCard,
-} from '@pasta/ui';
+import { Breadcrumb, Card, CardContent, SectionHeading, Thumbnail, Timeline } from '@pasta/ui';
 import { formatDuration } from '@pasta/utils';
 import { Check, Clock, Info, MapPin, ShieldCheck, Smartphone } from 'lucide-react';
 
 import { Footer } from '@/components/layout/footer';
 import { Navbar } from '@/components/layout/navbar';
 import { BookingSidebar } from '@/components/tours/booking-sidebar';
+import { TourCarousel } from '@/components/tours/tour-carousel';
 import { api, safely } from '@/lib/api';
 import { activeCurrency } from '@/lib/currency.server';
 
@@ -49,7 +42,24 @@ export default async function TourDetailPage({ params }: { params: Params }) {
 
   if (!tour) notFound();
 
-  const related = await safely(api.tours.related(slug, currency), [], 'tours.related');
+  // Every other tour, not the three "related" ones: the section is a slider
+  // now, so there is room for the whole catalogue and no reason to pick.
+  const { data: catalogue } = await safely(
+    api.tours.list({ currency, sort: 'popular', limit: 24 }),
+    {
+      data: [],
+      meta: {
+        page: 1,
+        limit: 0,
+        total: 0,
+        totalPages: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      },
+    },
+    'tours.list',
+  );
+  const others = catalogue.filter((item) => item.slug !== tour.slug);
 
   // The cover leads the gallery wherever it sits in the uploaded order, and the
   // three tiles beneath it are the rest — never the cover a second time.
@@ -223,32 +233,7 @@ export default async function TourDetailPage({ params }: { params: Params }) {
           </aside>
         </div>
 
-        {related.length > 0 ? (
-          <section className="mt-16">
-            <h2 className="font-display text-2xl font-semibold">You might also like</h2>
-            <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {related.map((item) => (
-                <TourCard
-                  key={item.id}
-                  title={item.title}
-                  location={item.location}
-                  durationHours={item.durationHours}
-                  priceMinor={item.priceMinor}
-                  currency={item.currency}
-                  imageUrl={item.coverImage ?? undefined}
-                  renderLink={(children) => (
-                    <Link
-                      href={`/tours/${item.slug}`}
-                      className="rounded-card focus-visible:outline-ring block h-full focus-visible:outline-2 focus-visible:outline-offset-4"
-                    >
-                      {children}
-                    </Link>
-                  )}
-                />
-              ))}
-            </div>
-          </section>
-        ) : null}
+        {others.length > 0 ? <TourCarousel title="You might also like" tours={others} /> : null}
       </main>
 
       <Footer />
