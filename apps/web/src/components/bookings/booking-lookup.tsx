@@ -85,22 +85,20 @@ export function BookingLookup() {
   }, [linkToken]);
 
   /**
-   * Documents are fetched with the same signed token that revealed the
-   * bookings, so a reference alone never yields somebody else's tickets.
+   * The invoice is fetched with the same signed token that revealed the
+   * bookings, so a reference alone never yields somebody else's paperwork.
+   *
+   * Tickets are not offered here — they travel with the confirmation email.
    */
-  async function download(reference: string, kind: 'tickets' | 'invoice') {
+  async function downloadInvoice(reference: string) {
     if (!token) return;
 
     setBusyReference(reference);
     setDocumentError(null);
 
     try {
-      const pdf =
-        kind === 'tickets'
-          ? await browserApi.bookings.ticketsPdf(reference, token)
-          : await browserApi.bookings.invoicePdf(reference, token);
-
-      saveBlob(pdf, `${reference}-${kind}.pdf`);
+      const pdf = await browserApi.bookings.invoicePdf(reference, token);
+      saveBlob(pdf, `${reference}-invoice.pdf`);
     } catch (caught: unknown) {
       setDocumentError(
         isApiClientError(caught)
@@ -392,7 +390,7 @@ export function BookingLookup() {
                             className="mt-4"
                             leadingIcon={<Download aria-hidden />}
                             disabled={busyReference === booking.reference}
-                            onClick={() => void download(booking.reference, 'invoice')}
+                            onClick={() => void downloadInvoice(booking.reference)}
                           >
                             Download Invoice
                           </Button>
@@ -412,16 +410,6 @@ export function BookingLookup() {
                         >
                           {expanded === booking.reference ? 'Hide Details' : 'View Details'}
                         </Button>
-                        {booking.status === 'CONFIRMED' ? (
-                          <Button
-                            size="sm"
-                            leadingIcon={<Download aria-hidden />}
-                            isLoading={busyReference === booking.reference}
-                            onClick={() => void download(booking.reference, 'tickets')}
-                          >
-                            Download Ticket
-                          </Button>
-                        ) : null}
                       </div>
                     </CardContent>
                   </Card>
