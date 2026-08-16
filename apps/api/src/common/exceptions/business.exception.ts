@@ -16,6 +16,7 @@ export const BusinessErrorCode = {
   PaymentAlreadyCaptured: 'PAYMENT_ALREADY_CAPTURED',
   RefundNotAllowed: 'REFUND_NOT_ALLOWED',
   SlugTaken: 'SLUG_TAKEN',
+  LocationInUse: 'LOCATION_IN_USE',
   DuplicateTimeSlot: 'DUPLICATE_TIME_SLOT',
   TourNotPublished: 'TOUR_NOT_PUBLISHED',
 } as const;

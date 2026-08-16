@@ -34,10 +34,10 @@ export default function ToursPage() {
           <>
             <Button
               variant="outline"
-              leadingIcon={<Plus aria-hidden />}
+              leadingIcon={<MapPin aria-hidden />}
               onClick={() => setAddingLocation(true)}
             >
-              Add New Location
+              Manage Locations
             </Button>
             <Button asChild leadingIcon={<Plus aria-hidden />}>
               <Link href="/tours/new">Add New Tour</Link>

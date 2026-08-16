@@ -807,6 +807,14 @@ export class AdminResource {
     return this.http.post<{ id: string; name: string }>('/admin/locations', payload);
   }
 
+  updateLocation(id: string, payload: SaveLocationPayload): Promise<{ id: string; name: string }> {
+    return this.http.patch<{ id: string; name: string }>(`/admin/locations/${id}`, payload);
+  }
+
+  deleteLocation(id: string): Promise<{ message: string }> {
+    return this.http.delete<{ message: string }>(`/admin/locations/${id}`);
+  }
+
   /**
    * Multipart, so this bypasses the JSON helpers. The browser sets the
    * boundary itself — setting Content-Type by hand would break the parse.
@@ -851,6 +859,8 @@ export interface AdminLocation {
   id: string;
   name: string;
   country: string;
+  /** Live tours filed under this destination — zero means it can be deleted. */
+  tourCount: number;
 }
 
 /** One tour in the shape the admin editor edits. */

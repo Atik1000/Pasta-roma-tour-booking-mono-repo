@@ -428,15 +428,29 @@ export class AdminService {
     });
   }
 
-  /** Destinations for the editor's Location select. */
+  /**
+   * Destinations for the editor's Location select, and for the panel that
+   * manages them. The tour count travels along so the manager can warn before
+   * a rename and refuse a delete that would orphan tours.
+   */
   async locations() {
     const rows = await this.prisma.location.findMany({
       where: { deletedAt: null },
       orderBy: { name: 'asc' },
-      select: { id: true, name: true, country: true },
+      select: {
+        id: true,
+        name: true,
+        country: true,
+        _count: { select: { tours: { where: { deletedAt: null } } } },
+      },
     });
 
-    return rows;
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      country: row.country,
+      tourCount: row._count.tours,
+    }));
   }
 
   /** Departures for one tour, optionally narrowed to a single date. */

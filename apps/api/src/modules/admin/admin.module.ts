@@ -327,6 +327,19 @@ export class AdminController {
     return this.write.createLocation(dto);
   }
 
+  @Patch('locations/:id')
+  @ApiOperation({ summary: 'Rename a destination or change its country' })
+  updateLocation(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SaveLocationDto) {
+    return this.write.updateLocation(id, dto);
+  }
+
+  @Delete('locations/:id')
+  @ApiOperation({ summary: 'Remove a destination that no tour uses' })
+  async deleteLocation(@Param('id', ParseUUIDPipe) id: string) {
+    await this.write.deleteLocation(id);
+    return { message: 'Location removed.' };
+  }
+
   @Post('blogs')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a blog post' })

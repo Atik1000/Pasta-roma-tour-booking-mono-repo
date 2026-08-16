@@ -413,6 +413,67 @@ export class AdminWriteService {
     });
   }
 
+  /**
+   * Renaming is a rename, not a re-key: the slug is left alone so that any
+   * public destination URL already in circulation keeps working, and tours
+   * stay attached because they reference the row by id.
+   */
+  async updateLocation(id: string, dto: SaveLocationDto): Promise<{ id: string; name: string }> {
+    const location = await this.prisma.location.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true },
+    });
+
+    if (!location) {
+      throw new NotFoundException('That location could not be found.');
+    }
+
+    const clash = await this.prisma.location.findFirst({
+      where: { name: dto.name.trim(), deletedAt: null, NOT: { id } },
+      select: { id: true },
+    });
+
+    if (clash) {
+      throw new BusinessException(
+        BusinessErrorCode.SlugTaken,
+        'A location with that name already exists.',
+      );
+    }
+
+    return this.prisma.location.update({
+      where: { id },
+      data: { name: dto.name.trim(), country: dto.country.trim() },
+      select: { id: true, name: true },
+    });
+  }
+
+  /**
+   * Soft-deleted, and only while nothing points at it. A tour whose location
+   * vanished would render a blank destination on the public site and could not
+   * be saved again from the editor, so the count is checked first.
+   */
+  async deleteLocation(id: string): Promise<void> {
+    const location = await this.prisma.location.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, _count: { select: { tours: { where: { deletedAt: null } } } } },
+    });
+
+    if (!location) {
+      throw new NotFoundException('That location could not be found.');
+    }
+
+    if (location._count.tours > 0) {
+      throw new BusinessException(
+        BusinessErrorCode.LocationInUse,
+        `That location is used by ${location._count.tours} ${
+          location._count.tours === 1 ? 'tour' : 'tours'
+        }. Move them elsewhere first.`,
+      );
+    }
+
+    await this.prisma.location.update({ where: { id }, data: { deletedAt: new Date() } });
+  }
+
   private async uniqueLocationSlug(desired: string): Promise<string> {
     const base = slugify(desired) || 'location';
     let candidate = base;
