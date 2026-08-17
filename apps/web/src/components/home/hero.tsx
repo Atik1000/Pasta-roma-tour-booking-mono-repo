@@ -54,12 +54,15 @@ function HeroBackdrop() {
 
       {/* The trust strip sits low and left, over the brightest water in the
           frame; the horizontal scrim above has faded to nothing by then. This
-          holds that corner down so the small print stays readable. */}
-      <div className="from-cream-900/70 absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t to-transparent" />
+          holds that corner down so the small print stays readable.
 
-      {/* Blends the photograph into the page. Kept shallow — taller, and it
-          washed out the very strip the scrim above is protecting. */}
-      <div className="from-background absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t to-transparent sm:h-24" />
+          This one is dark and stays. The cream gradient that used to sit
+          under it — blending the photograph into the page background — is
+          gone: it dissolved the bottom of the frame into a band of white
+          smoke, so the river and the bridge simply disappeared before the
+          section ended. The photograph now runs to the edge and stops, the
+          same way the inner page headers do. */}
+      <div className="from-cream-900/70 absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t to-transparent" />
     </div>
   );
 }
