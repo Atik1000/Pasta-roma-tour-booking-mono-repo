@@ -1,16 +1,12 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter, Playfair_Display } from 'next/font/google';
+import { Outfit } from 'next/font/google';
 
 import { Providers } from './providers';
 
 import './globals.css';
 
-const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' });
-const playfair = Playfair_Display({
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-playfair',
-});
+/** Stand-in for the licensed GT Walsheim — see the shared theme's `@font-face`. */
+const outfit = Outfit({ subsets: ['latin'], display: 'swap', variable: '--font-outfit' });
 
 export const metadata: Metadata = {
   title: { default: 'Dashboard | Pasta Roma Tour Admin', template: '%s | Pasta Roma Tour Admin' },
@@ -24,7 +20,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${playfair.variable}`}>
+    <html lang="en" suppressHydrationWarning className={outfit.variable}>
       <body className="min-h-dvh antialiased">
         <Providers>{children}</Providers>
       </body>

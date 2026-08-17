@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter, Playfair_Display } from 'next/font/google';
+import { Outfit } from 'next/font/google';
 
 import { activeCurrency } from '@/lib/currency.server';
 import { env } from '@/lib/env';
@@ -8,16 +8,18 @@ import { Providers } from './providers';
 
 import './globals.css';
 
-const inter = Inter({
+/**
+ * The stand-in for GT Walsheim.
+ *
+ * The brand face is licensed and self-hosted — see the `@font-face` block
+ * in the shared theme for how to install it. Outfit is the closest
+ * geometric sans on Google Fonts and holds the same shape until it is,
+ * so a missing licence degrades the type rather than the layout.
+ */
+const outfit = Outfit({
   subsets: ['latin'],
   display: 'swap',
-  variable: '--font-inter',
-});
-
-const playfair = Playfair_Display({
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-playfair',
+  variable: '--font-outfit',
 });
 
 export const metadata: Metadata = {
@@ -50,7 +52,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const currency = await activeCurrency();
 
   return (
-    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${playfair.variable}`}>
+    <html lang="en" suppressHydrationWarning className={outfit.variable}>
       <body className="min-h-dvh antialiased">
         <Providers currency={currency}>{children}</Providers>
       </body>

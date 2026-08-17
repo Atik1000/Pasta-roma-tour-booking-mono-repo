@@ -18,6 +18,51 @@
 @source '../../hooks/src/**/*.{ts,tsx}';
 
 /* ------------------------------------------------------------------ *
+ * GT Walsheim
+ *
+ * The brand face. It is a licensed font from Grilli Type, so the files
+ * are NOT in this repository and cannot be fetched from a CDN — a
+ * licence has to be bought and the webfonts self-hosted.
+ *
+ * To install: drop the woff2 files into each app's `public/fonts/`
+ * directory under exactly these names. Nothing else needs changing;
+ * these rules pick them up and every heading and paragraph on the site
+ * switches over.
+ *
+ *   public/fonts/gt-walsheim-regular.woff2   (400)
+ *   public/fonts/gt-walsheim-medium.woff2    (500)
+ *   public/fonts/gt-walsheim-bold.woff2      (700)
+ *
+ * Until they are there the browser silently skips these faces and falls
+ * through to Outfit — the closest geometric sans on Google Fonts — so
+ * the site keeps the intended shape either way.
+ * ------------------------------------------------------------------ */
+
+@font-face {
+  font-family: 'GT Walsheim';
+  src: url('/fonts/gt-walsheim-regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'GT Walsheim';
+  src: url('/fonts/gt-walsheim-medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'GT Walsheim';
+  src: url('/fonts/gt-walsheim-bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ------------------------------------------------------------------ *
  * Raw palette — fixed values, never themed.
  * ------------------------------------------------------------------ */
 @theme {
@@ -51,10 +96,13 @@
   --color-navy-900: #0b1220;
   --color-navy-950: #060b13;
 
-  /* Typography */
+  /* Typography — one geometric sans for the whole product.
+     `--font-outfit` is the Google-hosted stand-in loaded by each app's
+     layout; it only ever renders when GT Walsheim is not installed. */
   --font-sans:
-    var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-display: var(--font-playfair), ui-serif, Georgia, 'Times New Roman', serif;
+    'GT Walsheim', var(--font-outfit), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    sans-serif;
+  --font-display: 'GT Walsheim', var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
 
   /* Elevation — warm-tinted, matching the soft card shadows in the designs */
   --shadow-card: 0 1px 2px rgb(26 20 8 / 0.04), 0 8px 24px -12px rgb(26 20 8 / 0.12);
@@ -301,17 +349,22 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
-    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    /* The `cvXX` alternates were Inter's; a geometric sans has no such
+       features and the declaration only confused the shaper. */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
+  /* Headings carry the weight rather than a second typeface. A geometric
+     sans set at 700 with the tracking pulled in is what reads as a
+     heading here — the same trick the reference site uses. */
   h1,
   h2,
-  h3 {
+  h3,
+  h4 {
     font-family: var(--font-display);
-    font-weight: 600;
-    letter-spacing: -0.01em;
+    font-weight: 700;
+    letter-spacing: -0.02em;
   }
 
   /* Visible, brand-coloured focus ring for keyboard users. */
