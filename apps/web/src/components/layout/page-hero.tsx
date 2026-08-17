@@ -35,7 +35,7 @@ export function PageHero({
   laurels?: boolean;
 }) {
   return (
-    <section className="relative isolate overflow-hidden pb-14 pt-36 sm:pt-40">
+    <section className="relative isolate overflow-hidden pb-8 pt-28 sm:pb-10 sm:pt-32">
       <div aria-hidden className="absolute inset-0 -z-10">
         <Image
           src={HERO_IMAGE}
@@ -46,11 +46,15 @@ export function PageHero({
           className="object-cover object-[62%_center]"
         />
 
-        {/* Same two scrims as the landing hero: one horizontal to carry the
-            heading column, one vertical to land the band on the page. */}
+        {/*
+          One scrim only, and a horizontal one: it carries the heading column
+          without touching the bottom edge.
+
+          The two gradients that used to sit along that edge — a dark one and a
+          cream one fading into the page — read as a haze smeared across the
+          photograph rather than as a transition, so the band now simply ends.
+        */}
         <div className="from-cream-900/85 via-cream-900/50 sm:via-cream-900/40 absolute inset-0 bg-gradient-to-r to-transparent" />
-        <div className="from-cream-900/60 absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t to-transparent" />
-        <div className="from-background absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t to-transparent" />
       </div>
 
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -58,6 +62,7 @@ export function PageHero({
           as="h1"
           align="start"
           tone="inverse"
+          size="compact"
           title={title}
           description={description}
           laurels={laurels}

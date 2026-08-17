@@ -40,6 +40,11 @@ export interface SectionHeadingProps {
    * palette switches together here instead.
    */
   tone?: 'default' | 'inverse';
+  /**
+   * `compact` for page headers, which are a label for the page rather than
+   * the page itself and were competing with the content underneath.
+   */
+  size?: 'default' | 'compact';
   className?: string;
 }
 
@@ -51,9 +56,11 @@ export function SectionHeading({
   laurels = true,
   as: Heading = 'h2',
   tone = 'default',
+  size = 'default',
   className,
 }: SectionHeadingProps) {
   const inverse = tone === 'inverse';
+  const compact = size === 'compact';
 
   return (
     <div
@@ -74,24 +81,35 @@ export function SectionHeading({
         </p>
       ) : null}
 
-      <div className="flex items-center gap-3">
-        {laurels ? <Laurel className={inverse ? 'text-brand-200' : undefined} /> : null}
+      <div className={cn('flex items-center', compact ? 'gap-2' : 'gap-3')}>
+        {laurels ? (
+          <Laurel className={cn(compact && 'h-6 w-4', inverse ? 'text-brand-200' : undefined)} />
+        ) : null}
         <Heading
           className={cn(
-            'font-display text-balance font-semibold',
-            Heading === 'h1' ? 'text-4xl sm:text-5xl' : 'text-3xl',
+            'font-display text-balance font-bold',
+            compact
+              ? 'text-2xl sm:text-3xl'
+              : Heading === 'h1'
+                ? 'text-4xl sm:text-5xl'
+                : 'text-3xl',
             inverse && 'text-white drop-shadow-lg',
           )}
         >
           {title}
         </Heading>
-        {laurels ? <Laurel className={cn('-scale-x-100', inverse && 'text-brand-200')} /> : null}
+        {laurels ? (
+          <Laurel
+            className={cn('-scale-x-100', compact && 'h-6 w-4', inverse && 'text-brand-200')}
+          />
+        ) : null}
       </div>
 
       {description ? (
         <p
           className={cn(
             'max-w-2xl text-balance',
+            compact && 'text-sm',
             inverse ? 'text-white/90 drop-shadow' : 'text-muted-foreground',
           )}
         >
