@@ -97,7 +97,7 @@ export function Hero() {
         so a short window never crushes the search box, and capped so an iPad
         Pro in portrait does not scroll a full screen before the first tour.
       */}
-      <div className="mx-auto flex min-h-[34rem] max-w-7xl flex-col justify-center px-4 pb-16 pt-32 sm:min-h-[38rem] sm:px-6 sm:pb-20 sm:pt-40 lg:min-h-[min(44rem,88vh)] lg:px-8">
+      <div className="mx-auto flex min-h-[34rem] max-w-7xl flex-col justify-center px-4 pb-16 pt-36 sm:min-h-[38rem] sm:px-6 sm:pb-20 sm:pt-44 lg:min-h-[min(44rem,88vh)] lg:px-8">
         <div className="max-w-2xl">
           <p className="text-brand-200 mb-3 text-sm font-medium tracking-wide drop-shadow">
             Authentic Experiences. Timeless Memories.

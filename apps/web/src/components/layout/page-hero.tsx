@@ -34,8 +34,13 @@ export function PageHero({
   description?: string;
   laurels?: boolean;
 }) {
+  // The navbar overlays this and stands 5rem tall, so the top padding is
+  // mostly clearance for it — at pt-28 the heading was tucked right under the
+  // bar. The extra rung buys breathing room without giving back the height:
+  // the band is still well short of what it was, because the saving came from
+  // the bottom padding and the smaller type.
   return (
-    <section className="relative isolate overflow-hidden pb-8 pt-28 sm:pb-10 sm:pt-32">
+    <section className="relative isolate overflow-hidden pb-8 pt-32 sm:pb-10 sm:pt-36">
       <div aria-hidden className="absolute inset-0 -z-10">
         <Image
           src={HERO_IMAGE}
