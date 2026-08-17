@@ -26,7 +26,19 @@ export async function BlogSidebar({
   activeCategory?: string;
   query?: string;
 }) {
-  const categories = await safely(api.blog.categories(), [], 'blog.categories');
+  /**
+   * The total comes from the listing's own pagination rather than by summing
+   * the categories: an article filed under three of them counts three times,
+   * and three of the articles on this blog are filed under none at all, so the
+   * sum never did agree with the number of articles on the page.
+   */
+  const [categories, all] = await Promise.all([
+    safely(api.blog.categories(), [], 'blog.categories'),
+    safely(api.blog.list({ limit: 1 }), null, 'blog.list (total)'),
+  ]);
+
+  const total = all?.meta.total ?? 0;
+  const showingAll = !activeCategory;
 
   return (
     <aside className="flex flex-col gap-6">
@@ -60,6 +72,24 @@ export async function BlogSidebar({
         <CardContent className="p-5">
           <h2 className="font-display mb-3 text-lg font-semibold">Categories</h2>
           <ul className="flex flex-col">
+            {/* Anchors the list: without it the counts below add up to more
+                than the blog holds and there is no way back to everything. */}
+            <li>
+              <Link
+                href={query ? `/blog?q=${encodeURIComponent(query)}` : '/blog'}
+                aria-current={showingAll ? 'true' : undefined}
+                className="rounded-field hover:bg-muted flex items-center justify-between gap-3 px-2 py-2.5 text-sm transition-colors"
+              >
+                <span className="inline-flex items-center gap-2.5">
+                  <Newspaper className="text-primary size-4" aria-hidden />
+                  <span className={showingAll ? 'text-primary font-medium' : undefined}>
+                    All Articles
+                  </span>
+                </span>
+                <span className="text-muted-foreground tabular-nums">{total}</span>
+              </Link>
+            </li>
+
             {categories.map((category) => {
               const Icon = CATEGORY_ICONS[category.slug] ?? Compass;
               const isActive = activeCategory === category.name;

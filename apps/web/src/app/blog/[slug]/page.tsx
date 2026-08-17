@@ -13,6 +13,17 @@ import { api, safely } from '@/lib/api';
 
 type Params = Promise<{ slug: string }>;
 
+/**
+ * Regenerate on a one-minute window.
+ *
+ * These pages were prerendered once at build time and then never again, which
+ * froze everything the sidebar reads from the API: the category list and its
+ * post counts kept reporting whatever was true on deploy day, so publishing an
+ * article left the counts beside it stale until the next release. The article
+ * body barely changes, but the furniture around it does.
+ */
+export const revalidate = 60;
+
 /** Degrades to on-demand rendering when the API is unreachable at build time. */
 export async function generateStaticParams() {
   const posts = await safely(api.blog.list({ limit: 100 }), null, 'blog.list (prerender)');
