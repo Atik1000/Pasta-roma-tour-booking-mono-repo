@@ -4,24 +4,27 @@ import { Clock, Facebook, Instagram, Mail, MapPin, Phone, Youtube } from 'lucide
 
 import { SkylineBackdrop, TripAdvisorMark, Wordmark } from './brand';
 
+/**
+ * Quick Links mirrors the navbar, so the footer offers the same map of the
+ * site rather than a second, longer one that disagreed with it.
+ */
 const QUICK_LINKS = [
   { label: 'Home', href: '/' },
-  { label: 'Tours', href: '/tours' },
   { label: 'Locations', href: '/locations' },
+  { label: 'Tours', href: '/tours' },
   { label: 'Blogs', href: '/blog' },
+  { label: 'Cart', href: '/cart' },
   { label: 'My Bookings', href: '/my-bookings' },
-  { label: 'Gift Cards', href: '/gift-cards' },
-  { label: 'Privacy Policy', href: '/privacy' },
-  { label: 'Terms & Conditions', href: '/terms' },
 ];
 
-const SUPPORT_LINKS = [
-  { label: 'Help Center', href: '/help' },
-  { label: 'FAQs', href: '/faqs' },
-  { label: 'Booking Guide', href: '/booking-guide' },
-  { label: 'Cancellation Policy', href: '/cancellation-policy' },
-  { label: 'Payment Methods', href: '/payment-methods' },
-  { label: 'Contact Us', href: '/contact' },
+/**
+ * The two legal pages, moved down to the bottom bar when the Support column
+ * was struck — they are still real pages and still have to be reachable, but
+ * they are not something a visitor browses to.
+ */
+const LEGAL_LINKS = [
+  { label: 'Privacy Policy', href: '/privacy' },
+  { label: 'Terms & Conditions', href: '/terms' },
 ];
 
 /**
@@ -38,25 +41,15 @@ const SOCIALS = [
   { label: 'TripAdvisor', href: 'https://tripadvisor.com', icon: TripAdvisorMark },
 ];
 
-/** Payment marks. Drawn inline so no third-party assets are loaded. */
-function PaymentMark({ label }: { label: string }) {
-  return (
-    <span
-      className="border-border bg-card text-muted-foreground flex h-8 w-12 items-center justify-center rounded-[0.375rem] border text-[0.5rem] font-bold tracking-tight"
-      aria-label={label}
-    >
-      {label}
-    </span>
-  );
-}
-
 export function Footer() {
   return (
     <footer className="border-border bg-cream-200/60 relative overflow-hidden border-t">
       <SkylineBackdrop className="text-cream-400/70" />
 
       <div className="relative mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
-        <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-4">
+        {/* Three columns since Support was struck; the brand column takes the
+            extra width rather than leaving a gap where the fourth one was. */}
+        <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1.2fr]">
           <div className="flex flex-col gap-4">
             <Wordmark />
             <p className="text-muted-foreground max-w-xs text-sm">
@@ -87,24 +80,6 @@ export function Footer() {
             </h2>
             <ul className="flex flex-col gap-2.5">
               {QUICK_LINKS.map((link) => (
-                <li key={link.href}>
-                  <Link
-                    href={link.href}
-                    className="text-muted-foreground hover:text-primary text-sm transition-colors"
-                  >
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </nav>
-
-          <nav aria-labelledby="footer-support" className="flex flex-col gap-4">
-            <h2 id="footer-support" className="font-display text-lg font-semibold">
-              Support
-            </h2>
-            <ul className="flex flex-col gap-2.5">
-              {SUPPORT_LINKS.map((link) => (
                 <li key={link.href}>
                   <Link
                     href={link.href}
@@ -152,10 +127,15 @@ export function Footer() {
           <p className="text-muted-foreground text-sm">
             © {new Date().getFullYear()} Pasta Roma Tour. All rights reserved.
           </p>
-          <ul className="flex items-center gap-2">
-            {['VISA', 'MC', 'AMEX', 'PayPal', 'Pay'].map((label) => (
-              <li key={label}>
-                <PaymentMark label={label} />
+          <ul className="flex items-center gap-5">
+            {LEGAL_LINKS.map((link) => (
+              <li key={link.href}>
+                <Link
+                  href={link.href}
+                  className="text-muted-foreground hover:text-primary text-sm transition-colors"
+                >
+                  {link.label}
+                </Link>
               </li>
             ))}
           </ul>
