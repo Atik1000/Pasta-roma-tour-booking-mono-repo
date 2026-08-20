@@ -4,22 +4,14 @@ import * as React from 'react';
 
 import { useRouter } from 'next/navigation';
 
+import { isApiClientError } from '@pasta/api-client';
 import type { CurrencyCode } from '@pasta/types';
-import {
-  Button,
-  Card,
-  CardContent,
-  QuantityStepper,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@pasta/ui';
-import { formatDateWithWeekday, formatMoney } from '@pasta/utils';
-import { CalendarDays, Clock, ShieldCheck, Smartphone, Users, Wallet } from 'lucide-react';
+import { Button, Card, CardContent, QuantityStepper } from '@pasta/ui';
+import { formatMoney } from '@pasta/utils';
+import { CalendarDays, ShieldCheck, Smartphone, Users, Wallet } from 'lucide-react';
 
 import { browserApi } from '@/lib/browser-api';
+import { syncCartCount } from '@/lib/cart-store';
 
 const TRUST_ITEMS = [
   {
@@ -29,8 +21,8 @@ const TRUST_ITEMS = [
   },
   {
     icon: CalendarDays,
-    title: 'Reserve now, pay later',
-    body: 'Secure your spot with no upfront payment.',
+    title: 'Book any day, no fixed departure',
+    body: 'We arrange a time that suits you after booking.',
   },
   {
     icon: ShieldCheck,
@@ -52,9 +44,11 @@ export interface BookingSidebarProps {
 /**
  * The sticky booking panel on the tour detail page.
  *
- * Per the mark-ups this is a *router* to Check Availability, not a checkout:
- * the "Add to Cart" button and the live "Your Selection" price summary were
- * both struck from the design, so the only action here is Check Availability.
+ * This used to be a router: it collected a date and a departure time and handed
+ * them to a Check Availability screen, which did the actual adding. Tours run on
+ * demand now — there is no calendar to consult and nothing that can be sold out
+ * — so the two screens collapsed into this one. Party size is the only choice
+ * left to make, and both CTAs act on it directly.
  */
 export function BookingSidebar({
   slug,
@@ -63,75 +57,28 @@ export function BookingSidebar({
   maxTickets = 10,
 }: BookingSidebarProps) {
   const router = useRouter();
-  const [days, setDays] = React.useState<{ date: string; available: boolean }[]>([]);
-  const [date, setDate] = React.useState('');
   const [travellers, setTravellers] = React.useState(2);
-  const [slots, setSlots] = React.useState<
-    { id: string; time: string; available: boolean; remaining: number }[]
-  >([]);
-  const [slotId, setSlotId] = React.useState<string | undefined>(undefined);
+  const [pendingAction, setPendingAction] = React.useState<'book' | 'cart' | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
 
-  // Two weeks of availability, so the date select only offers bookable days.
-  React.useEffect(() => {
-    let cancelled = false;
-    const from = new Date().toISOString().slice(0, 10);
+  /**
+   * Both CTAs put the tour in the cart; "Book Now" then goes straight to
+   * checkout while "Add to Cart" stays on the cart page, matching the design's
+   * two-button layout.
+   */
+  async function addToCart(intent: 'book' | 'cart') {
+    setPendingAction(intent);
+    setError(null);
 
-    void browserApi.tours
-      .availability(slug, from, 14)
-      .then((result) => {
-        if (cancelled) return;
-        setDays(result);
-        setDate((current) => current || (result.find((day) => day.available)?.date ?? ''));
-      })
-      .catch(() => {
-        if (!cancelled) setDays([]);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [slug]);
-
-  // A slot id is date-scoped, so the chosen time resets with the date.
-  React.useEffect(() => {
-    if (!date) {
-      setSlots([]);
-      return;
+    try {
+      syncCartCount(await browserApi.cart.add(slug, travellers, currency));
+      router.push(intent === 'book' ? '/checkout' : '/cart');
+    } catch (caught) {
+      setError(
+        isApiClientError(caught) ? caught.message : 'We could not add that. Please try again.',
+      );
+      setPendingAction(null);
     }
-
-    let cancelled = false;
-    void browserApi.tours
-      .slots(slug, date)
-      .then((result) => {
-        if (cancelled) return;
-        setSlots(result);
-        setSlotId(result.find((slot) => slot.available)?.id);
-      })
-      .catch(() => {
-        if (!cancelled) setSlots([]);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [slug, date]);
-
-  const availableSlots = slots.filter((slot) => slot.available);
-  const selectedSlot = slots.find((slot) => slot.id === slotId);
-
-  // The departure's remaining seats cap the party size just as the tour's own
-  // limit does — carrying a number the slot cannot hold through to Check
-  // Availability only moves the rejection one screen later.
-  const seatLimit = Math.min(maxTickets, selectedSlot?.remaining ?? maxTickets);
-
-  React.useEffect(() => {
-    setTravellers((current) => Math.min(current, Math.max(1, seatLimit)));
-  }, [seatLimit]);
-
-  function checkAvailability() {
-    const query = new URLSearchParams({ date, travellers: String(travellers) });
-    if (slotId) query.set('slot', slotId);
-    router.push(`/tours/${slug}/availability?${query.toString()}`);
   }
 
   return (
@@ -142,26 +89,7 @@ export function BookingSidebar({
           <p className="font-display text-primary text-4xl font-semibold">
             {formatMoney(priceMinor, currency, { showDecimals: false })}
           </p>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="booking-date" className="text-sm font-medium">
-            Select Date
-          </label>
-          <Select value={date} onValueChange={setDate}>
-            <SelectTrigger id="booking-date" leadingIcon={<CalendarDays aria-hidden />}>
-              <SelectValue placeholder="Choose a date" />
-            </SelectTrigger>
-            <SelectContent>
-              {days
-                .filter((day) => day.available)
-                .map(({ date: entry }) => (
-                  <SelectItem key={entry} value={entry}>
-                    {formatDateWithWeekday(entry)}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
+          <p className="text-muted-foreground mt-1 text-sm">per person</p>
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -177,50 +105,45 @@ export function BookingSidebar({
               value={travellers}
               onChange={setTravellers}
               min={1}
-              max={Math.max(1, seatLimit)}
+              max={maxTickets}
             />
           </div>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="booking-time" className="text-sm font-medium">
-            Select Time
-          </label>
-          <Select value={slotId} onValueChange={setSlotId} disabled={availableSlots.length === 0}>
-            <SelectTrigger id="booking-time" leadingIcon={<Clock aria-hidden />}>
-              <SelectValue placeholder="Choose a time" />
-            </SelectTrigger>
-            <SelectContent>
-              {availableSlots.map((slot) => (
-                <SelectItem key={slot.id} value={slot.id}>
-                  {slot.remaining < maxTickets
-                    ? `${slot.time} — ${slot.remaining} left`
-                    : slot.time}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="border-border flex items-center justify-between border-t pt-4">
+          <span className="text-sm font-medium">Total</span>
+          <span className="font-display text-xl font-semibold">
+            {formatMoney(priceMinor * travellers, currency)}
+          </span>
         </div>
 
-        <p className="flex items-center gap-2 text-sm">
-          <span
-            className={
-              availableSlots.length > 0
-                ? 'bg-success size-2 rounded-full'
-                : 'bg-danger size-2 rounded-full'
-            }
-            aria-hidden
-          />
-          <span className={availableSlots.length > 0 ? 'text-success' : 'text-danger'}>
-            {availableSlots.length > 0
-              ? 'Good availability on selected date'
-              : 'Sold out on selected date'}
-          </span>
-        </p>
+        {error ? (
+          <p role="alert" className="text-danger text-sm">
+            {error}
+          </p>
+        ) : null}
 
-        <Button size="lg" block onClick={checkAvailability}>
-          Check Availability
-        </Button>
+        <div className="flex flex-col gap-2">
+          <Button
+            size="lg"
+            block
+            isLoading={pendingAction === 'book'}
+            disabled={pendingAction !== null}
+            onClick={() => void addToCart('book')}
+          >
+            Book Now
+          </Button>
+          <Button
+            size="lg"
+            block
+            variant="outline"
+            isLoading={pendingAction === 'cart'}
+            disabled={pendingAction !== null}
+            onClick={() => void addToCart('cart')}
+          >
+            Add to Cart
+          </Button>
+        </div>
 
         <ul className="border-border flex flex-col gap-4 border-t pt-5">
           {TRUST_ITEMS.map(({ icon: Icon, title, body }) => (
@@ -234,7 +157,7 @@ export function BookingSidebar({
           ))}
         </ul>
 
-        {/* This sits two clicks from checkout, so it names the methods checkout
+        {/* This sits one click from checkout, so it names the methods checkout
             actually offers. The card-brand row it replaced promised VISA and
             Amex, which nothing in the booking flow can take. */}
         <div className="border-border flex flex-col gap-1.5 border-t pt-5">

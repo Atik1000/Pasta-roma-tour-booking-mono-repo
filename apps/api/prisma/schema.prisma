@@ -204,7 +204,6 @@ model Tour {
   images       TourImage[]
   bullets      TourBullet[]
   plans        TourPlan[]
-  slots        TourSlot[]
   cartItems    CartItem[]
   bookingItems BookingItem[]
 
@@ -261,32 +260,6 @@ model TourPlan {
   @@map("tour_plans")
 }
 
-/// Bookable departure. The unique constraint enforces the rule stated in the
-/// admin UI: a time is unique per tour and date.
-model TourSlot {
-  id     String   @id @default(uuid()) @db.Uuid
-  tourId String   @db.Uuid
-  tour   Tour     @relation(fields: [tourId], references: [id], onDelete: Cascade)
-  date   DateTime @db.Date
-  /// 24-hour clock time, `HH:mm`.
-  time   String   @db.VarChar(5)
-
-  capacity Int
-  /// Seats already taken. Incremented atomically at checkout.
-  booked   Int @default(0)
-
-  cartItems    CartItem[]
-  bookingItems BookingItem[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([tourId, date, time])
-  @@index([tourId, date])
-  @@index([date])
-  @@map("tour_slots")
-}
-
 // ---------------------------------------------------------------------------
 // Cart — guest-scoped, expires
 // ---------------------------------------------------------------------------
@@ -313,8 +286,6 @@ model CartItem {
 
   tourId String @db.Uuid
   tour   Tour   @relation(fields: [tourId], references: [id], onDelete: Cascade)
-  slotId String @db.Uuid
-  slot   TourSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
 
   quantity Int
 
@@ -326,7 +297,11 @@ model CartItem {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([cartId, slotId])
+  /// One line per tour. Adding the same tour again raises the quantity on the
+  /// line already there rather than opening a second one — with no departure
+  /// to tell two lines apart, a duplicate would just be the same purchase
+  /// listed twice.
+  @@unique([cartId, tourId])
   @@index([cartId])
   @@map("cart_items")
 }
@@ -393,14 +368,10 @@ model BookingItem {
 
   tourId String @db.Uuid
   tour   Tour   @relation(fields: [tourId], references: [id], onDelete: Restrict)
-  slotId String   @db.Uuid
-  slot   TourSlot @relation(fields: [slotId], references: [id], onDelete: Restrict)
 
   /// Denormalised so a historic booking still reads correctly after the tour
   /// is renamed, repriced or unpublished.
   tourTitle String
-  date      DateTime @db.Date
-  time      String   @db.VarChar(5)
 
   quantity  Int
   unitPrice Int
@@ -413,7 +384,6 @@ model BookingItem {
 
   @@index([bookingId])
   @@index([tourId])
-  @@index([slotId])
   @@map("booking_items")
 }
 

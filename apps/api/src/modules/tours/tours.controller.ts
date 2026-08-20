@@ -7,15 +7,7 @@ import {
 } from '../../common/decorators/api-response.decorator';
 import { Public } from '../../common/decorators/auth.decorators';
 import { CurrencyQueryDto } from '../../common/dto/currency-query.dto';
-import {
-  AvailabilityDayDto,
-  AvailabilityQueryDto,
-  ListToursQueryDto,
-  SlotDto,
-  SlotQueryDto,
-  TourDetailDto,
-  TourSummaryDto,
-} from './dto/tour.dto';
+import { ListToursQueryDto, TourDetailDto, TourSummaryDto } from './dto/tour.dto';
 import { ToursService } from './tours.service';
 
 @ApiTags('Tours')
@@ -46,22 +38,5 @@ export class ToursController {
     @Query() query: CurrencyQueryDto,
   ): Promise<TourSummaryDto[]> {
     return this.tours.related(slug, query.currency);
-  }
-
-  @Get(':slug/slots')
-  @ApiOperation({ summary: 'Departure times for one date' })
-  @ApiEnvelopeResponse(SlotDto)
-  slots(@Param('slug') slug: string, @Query() query: SlotQueryDto): Promise<SlotDto[]> {
-    return this.tours.slotsForDate(slug, query.date);
-  }
-
-  @Get(':slug/availability')
-  @ApiOperation({ summary: 'Day-by-day availability for the date rail' })
-  @ApiEnvelopeResponse(AvailabilityDayDto)
-  availability(
-    @Param('slug') slug: string,
-    @Query() query: AvailabilityQueryDto,
-  ): Promise<AvailabilityDayDto[]> {
-    return this.tours.availability(slug, query.from, query.days);
   }
 }

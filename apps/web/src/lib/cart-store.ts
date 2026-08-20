@@ -24,8 +24,8 @@ interface CartCountState {
  * a count without every page having to thread one down: any component that
  * receives a fresh `Cart` calls `sync`, and the badge updates wherever it is.
  *
- * The badge counts *lines*, not seats: `items.length`, so three tickets on one
- * departure reads as 1. It used to report `totalTickets`, which made the badge
+ * The badge counts *lines*, not tickets: `items.length`, so three tickets for
+ * one tour reads as 1. It used to report `totalTickets`, which made the badge
  * disagree with the cart page beside it — a basket holding one tour showed a 3.
  */
 export const useCartStore = create<CartCountState>((set, get) => ({

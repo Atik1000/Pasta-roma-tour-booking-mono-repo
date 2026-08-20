@@ -54,10 +54,7 @@ describe('Booking documents (e2e)', () => {
         items: {
           create: {
             tourId: fixture.tourId,
-            slotId: fixture.slotId,
             tourTitle: 'Colosseum Underground Tour',
-            date: new Date('2030-06-01T00:00:00.000Z'),
-            time: '09:00',
             quantity: 2,
             unitPrice: 2000,
             amount: 4000,

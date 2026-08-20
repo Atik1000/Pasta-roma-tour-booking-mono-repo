@@ -59,22 +59,26 @@ export async function resetDatabase(prisma: PrismaService): Promise<void> {
 export interface SeedFixture {
   tourId: string;
   tourSlug: string;
-  slotId: string;
-  slotCapacity: number;
+  secondTourId: string;
+  secondTourSlug: string;
   adminEmail: string;
   adminPassword: string;
 }
 
 /**
- * The smallest catalogue a booking test needs: one location, one published
- * tour with a known price and cap, one slot with a known capacity, and one
- * admin. Deliberately tiny so failures point at behaviour, not fixtures.
+ * The smallest catalogue a booking test needs: one location, two published
+ * tours with known prices and caps, and one admin. Deliberately tiny so
+ * failures point at behaviour, not fixtures.
+ *
+ * The second published tour is what makes "add another line" testable now that
+ * a booking holds one line per tour — there is no longer a second departure of
+ * the same tour to reach for.
  */
 export async function seedMinimal(
   prisma: PrismaService,
-  options: { capacity?: number; maxTicketsPerTour?: number } = {},
+  options: { maxTicketsPerTour?: number } = {},
 ): Promise<SeedFixture> {
-  const { capacity = 10, maxTicketsPerTour = 6 } = options;
+  const { maxTicketsPerTour = 6 } = options;
 
   const location = await prisma.location.create({
     data: { name: 'Rome, Italy', slug: 'rome-italy', country: 'Italy' },
@@ -119,12 +123,18 @@ export async function seedMinimal(
     },
   });
 
-  const slot = await prisma.tourSlot.create({
+  const secondTour = await prisma.tour.create({
     data: {
-      tourId: tour.id,
-      date: new Date('2030-06-01T00:00:00.000Z'),
-      time: '09:00',
-      capacity,
+      title: 'Vatican Museums Skip-the-Line',
+      slug: 'vatican-museums-skip-the-line',
+      description: 'Straight past the queue and into the galleries.',
+      durationHours: 3,
+      type: 'MUSEUM',
+      status: 'PUBLISHED',
+      locationId: location.id,
+      priceAdultEur: 7500,
+      priceAdultUsd: 8900,
+      maxTicketsPerTour,
     },
   });
 
@@ -141,8 +151,8 @@ export async function seedMinimal(
   return {
     tourId: tour.id,
     tourSlug: tour.slug,
-    slotId: slot.id,
-    slotCapacity: capacity,
+    secondTourId: secondTour.id,
+    secondTourSlug: secondTour.slug,
     adminEmail: 'admin@test.local',
     adminPassword,
   };

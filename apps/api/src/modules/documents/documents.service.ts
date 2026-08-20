@@ -125,11 +125,10 @@ export class DocumentsService {
 
     // --- line items
     y += 40;
-    const columns = { tour: PAGE_MARGIN, when: 250, qty: 370, unit: 415, amount: right - 70 };
+    const columns = { tour: PAGE_MARGIN, qty: 370, unit: 415, amount: right - 70 };
 
     doc.fontSize(9).fillColor(MUTED);
     doc.text('TOUR', columns.tour, y);
-    doc.text('DATE', columns.when, y);
     doc.text('QTY', columns.qty, y, { width: 30, align: 'right' });
     doc.text('UNIT', columns.unit, y, { width: 50, align: 'right' });
     doc.text('AMOUNT', columns.amount, y, { width: 70, align: 'right' });
@@ -140,12 +139,9 @@ export class DocumentsService {
 
     for (const item of booking.items) {
       doc.fontSize(10).fillColor(INK);
-      const titleHeight = doc.heightOfString(item.tourTitle, { width: 190 });
-      doc.text(item.tourTitle, columns.tour, y, { width: 190 });
-      doc
-        .fillColor(MUTED)
-        .text(`${longDate(item.date)} · ${item.time}`, columns.when, y, { width: 110 });
-      doc.fillColor(INK);
+      // The title now has the width the departure column used to take.
+      const titleHeight = doc.heightOfString(item.tourTitle, { width: 330 });
+      doc.text(item.tourTitle, columns.tour, y, { width: 330 });
       doc.text(String(item.quantity), columns.qty, y, { width: 30, align: 'right' });
       doc.text(money(item.unitPrice, booking.currency), columns.unit, y, {
         width: 50,
@@ -260,7 +256,7 @@ export class DocumentsService {
       .fillColor(MUTED)
       .text(`Ticket ${position} of ${count}`, PAGE_MARGIN, 118, { width, align: 'right' });
 
-    // Gold banner carrying the tour and departure.
+    // Gold banner carrying the tour.
     doc.roundedRect(PAGE_MARGIN, 140, width, 92, 10).fill(GOLD);
     doc
       .fillColor('#ffffff')
@@ -269,7 +265,9 @@ export class DocumentsService {
     doc
       .fontSize(11)
       .fillColor('#fdf6e9')
-      .text(`${longDate(item.date)} at ${item.time}`, PAGE_MARGIN + 20, 196, { width: width - 40 });
+      // Tours are booked on demand, so a ticket names the booking rather than a
+      // departure — the date is arranged with the traveller afterwards.
+      .text(`Booking ${booking.reference}`, PAGE_MARGIN + 20, 196, { width: width - 40 });
 
     let y = 262;
 
@@ -320,10 +318,7 @@ export class DocumentsService {
       .fillColor(INK)
       .text(ticket.code, PAGE_MARGIN + 168, y + 66, { width: 260 });
 
-    this.footer(
-      doc,
-      'Please arrive 15 minutes before departure. This ticket admits one traveller.',
-    );
+    this.footer(doc, 'We will be in touch to arrange a time. This ticket admits one traveller.');
   }
 
   // --- CSV export ------------------------------------------------------------
@@ -425,9 +420,7 @@ export class DocumentsService {
         (booking.bookingFee / 100).toFixed(2),
         (booking.total / 100).toFixed(2),
         booking.items.reduce((sum, item) => sum + item.quantity, 0),
-        booking.items
-          .map((item) => `${item.tourTitle} (${item.date.toISOString().slice(0, 10)} ${item.time})`)
-          .join('; '),
+        booking.items.map((item) => `${item.tourTitle} × ${item.quantity}`).join('; '),
       ]
         .map(csvCell)
         .join(','),
@@ -448,7 +441,7 @@ export class DocumentsService {
           `<tr>
              <td style="padding:10px 0;border-bottom:1px solid ${RULE}">
                <strong style="color:${INK}">${escapeHtml(item.tourTitle)}</strong><br />
-               <span style="color:${MUTED};font-size:13px">${longDate(item.date)} at ${item.time} · ${item.quantity} ticket(s)</span>
+               <span style="color:${MUTED};font-size:13px">${item.quantity} ticket(s)</span>
              </td>
              <td style="padding:10px 0;border-bottom:1px solid ${RULE};text-align:right;color:${INK}">
                ${money(item.amount, booking.currency)}
@@ -475,7 +468,7 @@ export class DocumentsService {
         </table>
 
         <p style="color:${MUTED};font-size:13px">
-          Please arrive 15 minutes before each departure and bring the attached ticket.
+          We will be in touch to arrange a time. Please bring the attached ticket.
         </p>
         <p style="color:${MUTED};font-size:13px">
           <a href="${this.config.siteUrl}/my-bookings" style="color:${GOLD}">Manage your bookings</a>
@@ -485,10 +478,7 @@ export class DocumentsService {
 
     const text = [
       `Your booking ${booking.reference} is confirmed.`,
-      ...booking.items.map(
-        (item) =>
-          `- ${item.tourTitle}, ${longDate(item.date)} at ${item.time}, ${item.quantity} ticket(s)`,
-      ),
+      ...booking.items.map((item) => `- ${item.tourTitle}, ${item.quantity} ticket(s)`),
       `Total: ${money(booking.total, booking.currency)}`,
       `Manage your bookings: ${this.config.siteUrl}/my-bookings`,
     ].join('\n');

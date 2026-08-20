@@ -42,37 +42,26 @@ export class MaintenanceService {
   }
 
   /**
-   * Releases seats held by unpaid bookings whose payment window has closed, so
-   * inventory is not locked up by abandoned checkouts.
+   * Closes out unpaid bookings whose payment window has passed.
+   *
+   * This used to be about inventory — an abandoned checkout sat on seats nobody
+   * was going to use. With departures gone there are no seats to reclaim, so
+   * what is left is housekeeping: a booking nobody paid for should not sit in
+   * the panel as PENDING for ever.
    */
   @Cron(CronExpression.EVERY_10_MINUTES, { name: 'expire-pending-bookings' })
   async expirePendingBookings(): Promise<void> {
-    const stale = await this.prisma.booking.findMany({
+    const { count } = await this.prisma.booking.updateMany({
       where: {
         status: 'PENDING',
         paymentStatus: 'PENDING',
         expiresAt: { lt: new Date() },
       },
-      select: { id: true, items: { select: { slotId: true, quantity: true } } },
+      data: { status: 'CANCELLED', cancelledAt: new Date() },
     });
 
-    if (stale.length === 0) return;
-
-    for (const booking of stale) {
-      await this.prisma.$transaction([
-        this.prisma.booking.update({
-          where: { id: booking.id },
-          data: { status: 'CANCELLED', cancelledAt: new Date() },
-        }),
-        ...booking.items.map((item) =>
-          this.prisma.tourSlot.update({
-            where: { id: item.slotId },
-            data: { booked: { decrement: item.quantity } },
-          }),
-        ),
-      ]);
+    if (count > 0) {
+      this.logger.log(`Expired ${count} unpaid bookings.`);
     }
-
-    this.logger.log(`Expired ${stale.length} unpaid bookings and released their seats.`);
   }
 }

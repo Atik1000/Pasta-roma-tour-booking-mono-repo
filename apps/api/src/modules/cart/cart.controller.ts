@@ -88,7 +88,7 @@ export class CartController {
   }
 
   @Post('items')
-  @ApiOperation({ summary: 'Add a departure to the cart' })
+  @ApiOperation({ summary: 'Add a tour to the cart' })
   @ApiEnvelopeResponse(CartDto)
   add(
     @Body() dto: AddCartItemDto,

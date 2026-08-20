@@ -7,7 +7,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 import { Button, Card, CardContent, Input, Skeleton, StatusPill, Thumbnail } from '@pasta/ui';
-import { formatClockTime, formatDate, formatMoney } from '@pasta/utils';
+import { formatDate, formatMoney } from '@pasta/utils';
 import {
   CalendarDays,
   Clock,
@@ -289,10 +289,7 @@ export function BookingLookup() {
                       */}
                       <ul className="flex flex-col gap-4">
                         {booking.tours.map((tour) => (
-                          <li
-                            key={`${tour.slug}-${tour.date}-${tour.time}`}
-                            className="flex items-start gap-4"
-                          >
+                          <li key={tour.slug} className="flex items-start gap-4">
                             <Thumbnail
                               src={tour.coverImage}
                               alt=""
@@ -308,14 +305,6 @@ export function BookingLookup() {
                               </Link>
 
                               <ul className="text-muted-foreground mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                                <li className="inline-flex items-center gap-1.5">
-                                  <CalendarDays className="size-4 shrink-0" aria-hidden />
-                                  {formatDate(tour.date)}
-                                </li>
-                                <li className="inline-flex items-center gap-1.5">
-                                  <Clock className="size-4 shrink-0" aria-hidden />
-                                  {formatClockTime(tour.time)}
-                                </li>
                                 {tour.location ? (
                                   <li className="inline-flex items-center gap-1.5">
                                     <MapPin className="size-4 shrink-0" aria-hidden />
@@ -341,10 +330,7 @@ export function BookingLookup() {
                           <h3 className="text-sm font-medium">Where to meet</h3>
                           <ul className="mt-2 flex flex-col gap-3">
                             {booking.tours.map((tour) => (
-                              <li
-                                key={`meet-${tour.title}-${tour.date}-${tour.time}`}
-                                className="text-sm"
-                              >
+                              <li key={`meet-${tour.slug}`} className="text-sm">
                                 <p className="font-medium">{tour.title}</p>
                                 <p className="text-muted-foreground">
                                   {tour.meetingPoint ?? tour.location}
@@ -358,7 +344,7 @@ export function BookingLookup() {
                           <dl className="mt-2 flex flex-col gap-1.5 text-sm">
                             {booking.tours.map((tour) => (
                               <div
-                                key={`price-${tour.title}-${tour.date}-${tour.time}`}
+                                key={`price-${tour.slug}`}
                                 className="flex justify-between gap-4"
                               >
                                 <dt className="text-muted-foreground">

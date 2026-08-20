@@ -36,14 +36,12 @@ export class CheckoutService {
   /**
    * Turns a cart into a booking.
    *
-   * Seats are claimed with a conditional UPDATE inside the transaction:
-   *
-   *   UPDATE tour_slots SET booked = booked + n WHERE id = ? AND booked + n <= capacity
-   *
-   * If the statement affects zero rows another traveller took the last seats
-   * between page load and submit, and the whole transaction rolls back. Prisma
-   * cannot express a column-to-column comparison, so this is raw SQL by
-   * necessity — and it is what makes overselling impossible under concurrency.
+   * Nothing is reserved on the way through. Tours run on demand rather than on
+   * a schedule, so there is no finite pool of seats for two travellers to race
+   * each other for — the conditional `UPDATE tour_slots … WHERE booked + n <=
+   * capacity` that used to guard this transaction has nothing left to guard.
+   * The only ceiling is `maxTicketsPerTour`, and the cart enforces that as each
+   * line is built.
    */
   async create(sessionId: string, dto: CheckoutDto): Promise<CheckoutResultDto> {
     const cart = await this.prisma.cart.findUnique({
@@ -60,7 +58,6 @@ export class CheckoutService {
                 maxTicketsPerTour: true,
               },
             },
-            slot: { select: { id: true, date: true, time: true } },
           },
         },
       },
@@ -105,7 +102,7 @@ export class CheckoutService {
      * way a card booking waits on its Stripe webhook. But there is no such
      * signal here — nobody is going to tell the server that a traveller intends
      * to turn up and pay — so a hold would just have `expirePendingBookings`
-     * cancel every one of these half an hour after it was made. The seats are
+     * cancel every one of these half an hour after it was made. The booking is
      * genuinely committed; `paymentStatus` stays PENDING until staff record the
      * money against the booking.
      */
@@ -113,22 +110,6 @@ export class CheckoutService {
     const payAtMeetingPoint = method === 'CASH';
 
     const booking = await this.prisma.$transaction(async (tx) => {
-      for (const item of priced) {
-        const claimed = await tx.$executeRaw`
-          UPDATE "tour_slots"
-          SET "booked" = "booked" + ${item.quantity}, "updatedAt" = NOW()
-          WHERE "id" = ${item.slotId}::uuid
-            AND "booked" + ${item.quantity} <= "capacity"
-        `;
-
-        if (claimed === 0) {
-          throw new BusinessException(
-            BusinessErrorCode.SlotSoldOut,
-            `${item.tour.title} sold out while you were checking out. Please choose another time.`,
-          );
-        }
-      }
-
       const customer = await tx.customer.upsert({
         where: { email },
         create: { email, fullName: dto.fullName.trim() },
@@ -147,8 +128,7 @@ export class CheckoutService {
           subtotal,
           bookingFee: BOOKING_FEE_MINOR,
           total,
-          // No expiry: neither method is a hold waiting on a payment signal, so
-          // there is nothing for the sweeper to reclaim.
+          // No expiry: neither method is a hold waiting on a payment signal.
           expiresAt: null,
           items: {
             create: priced.map((item) => {
@@ -157,10 +137,7 @@ export class CheckoutService {
 
               return {
                 tourId: item.tourId,
-                slotId: item.slotId,
                 tourTitle: item.tour.title,
-                date: item.slot.date,
-                time: item.slot.time,
                 quantity: item.quantity,
                 unitPrice: item.unitPrice,
                 amount: item.amount,
@@ -208,7 +185,7 @@ export class CheckoutService {
         subject: `Your Pasta Roma Tour booking ${booking.reference} is confirmed`,
         html: `
           <p>Hello ${dto.fullName},</p>
-          <p>Your booking <strong>${booking.reference}</strong> is confirmed and your seats are reserved.</p>
+          <p>Your booking <strong>${booking.reference}</strong> is confirmed. We will be in touch to arrange a time that suits you.</p>
           <p>${settlement}</p>
         `,
         text: `Booking ${booking.reference} is confirmed. ${settlementText}`,

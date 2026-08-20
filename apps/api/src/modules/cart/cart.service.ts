@@ -62,7 +62,6 @@ export class CartService {
                 images: { orderBy: { position: 'asc' }, take: 1, select: { url: true } },
               },
             },
-            slot: { select: { date: true, time: true, capacity: true, booked: true } },
           },
         },
       },
@@ -73,14 +72,11 @@ export class CartService {
       tourSlug: item.tour.slug,
       title: item.tour.title,
       location: item.tour.location.name,
-      date: item.slot.date.toISOString().slice(0, 10),
-      time: item.slot.time,
       quantity: item.quantity,
       unitPriceMinor: item.unitPriceSnapshot,
       amountMinor: item.unitPriceSnapshot * item.quantity,
       currency: item.currency,
       coverImage: item.tour.images[0]?.url ?? null,
-      remaining: Math.max(0, item.slot.capacity - item.slot.booked),
       maxTickets: item.tour.maxTicketsPerTour,
       // Surfaced rather than silently repriced — the traveller decides. Compared
       // against the price in the item's own currency, not always the EUR one.
@@ -153,38 +149,24 @@ export class CartService {
       throw new NotFoundException('That tour could not be found.');
     }
 
-    const slot = await this.prisma.tourSlot.findFirst({
-      where: { id: dto.slotId, tourId: tour.id },
-      select: { id: true, capacity: true, booked: true },
-    });
-
-    if (!slot) {
-      throw new BusinessException(
-        BusinessErrorCode.SlotUnavailable,
-        'That departure is no longer available.',
-      );
-    }
-
     const cart = await this.resolveCart(sessionId);
 
+    // One line per tour, so adding a tour already in the basket tops up the
+    // line that is there. Without a departure to tell two lines apart, a second
+    // one would read as the same purchase listed twice.
     const existing = await this.prisma.cartItem.findUnique({
-      where: { cartId_slotId: { cartId: cart.id, slotId: slot.id } },
+      where: { cartId_tourId: { cartId: cart.id, tourId: tour.id } },
       select: { id: true, quantity: true },
     });
 
     const desired = (existing?.quantity ?? 0) + dto.quantity;
 
+    // The per-tour cap is now the only ceiling on a line: with no departure
+    // there are no seats to run out of, so a tour can always be booked.
     if (desired > tour.maxTicketsPerTour) {
       throw new BusinessException(
         BusinessErrorCode.MaxTicketsExceeded,
         `You can book at most ${tour.maxTicketsPerTour} tickets for this tour.`,
-      );
-    }
-
-    if (desired > slot.capacity - slot.booked) {
-      throw new BusinessException(
-        BusinessErrorCode.SlotSoldOut,
-        'There are not enough seats left on that departure.',
       );
     }
 
@@ -198,7 +180,6 @@ export class CartService {
         data: {
           cartId: cart.id,
           tourId: tour.id,
-          slotId: slot.id,
           quantity: dto.quantity,
           unitPriceSnapshot: adultPriceMinor(tour, currency),
           currency,
@@ -219,10 +200,7 @@ export class CartService {
   ): Promise<CartDto> {
     const item = await this.prisma.cartItem.findFirst({
       where: { id: itemId, cart: { sessionId } },
-      include: {
-        tour: { select: { maxTicketsPerTour: true } },
-        slot: { select: { capacity: true, booked: true } },
-      },
+      include: { tour: { select: { maxTicketsPerTour: true } } },
     });
 
     if (!item) {
@@ -233,13 +211,6 @@ export class CartService {
       throw new BusinessException(
         BusinessErrorCode.MaxTicketsExceeded,
         `You can book at most ${item.tour.maxTicketsPerTour} tickets for this tour.`,
-      );
-    }
-
-    if (quantity > item.slot.capacity - item.slot.booked) {
-      throw new BusinessException(
-        BusinessErrorCode.SlotSoldOut,
-        'There are not enough seats left on that departure.',
       );
     }
 

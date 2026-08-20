@@ -5,8 +5,6 @@ import { HttpException, HttpStatus } from '@nestjs/common';
  * These travel in the `error` field of the API error envelope.
  */
 export const BusinessErrorCode = {
-  SlotSoldOut: 'SLOT_SOLD_OUT',
-  SlotUnavailable: 'SLOT_UNAVAILABLE',
   MaxTicketsExceeded: 'MAX_TICKETS_EXCEEDED',
   CartEmpty: 'CART_EMPTY',
   CartExpired: 'CART_EXPIRED',
@@ -17,7 +15,7 @@ export const BusinessErrorCode = {
   RefundNotAllowed: 'REFUND_NOT_ALLOWED',
   SlugTaken: 'SLUG_TAKEN',
   LocationInUse: 'LOCATION_IN_USE',
-  DuplicateTimeSlot: 'DUPLICATE_TIME_SLOT',
+  DuplicateBookingItem: 'DUPLICATE_BOOKING_ITEM',
   TourNotPublished: 'TOUR_NOT_PUBLISHED',
 } as const;
 export type BusinessErrorCode = (typeof BusinessErrorCode)[keyof typeof BusinessErrorCode];

@@ -33,8 +33,6 @@ import {
   AddBookingItemDto,
   SaveBlogDto,
   SaveLocationDto,
-  SaveSlotDto,
-  SaveSlotScheduleDto,
   SaveTourDto,
   SaveTourImagesDto,
   UpdateBookingDto,
@@ -54,7 +52,6 @@ import {
   ListAdminBookingsQueryDto,
   ListAdminPaymentsQueryDto,
   ListAdminToursQueryDto,
-  TourSlotSummaryDto,
 } from './dto/admin.dto';
 
 /**
@@ -140,19 +137,6 @@ export class AdminController {
   @ApiOperation({ summary: 'One tour, in editor shape' })
   tourDetail(@Param('id', ParseUUIDPipe) id: string) {
     return this.admin.tourDetail(id);
-  }
-
-  @Get('tours/:id/slots')
-  @ApiOperation({ summary: 'Departures for a tour on one date' })
-  tourSlots(@Param('id', ParseUUIDPipe) id: string, @Query('date') date?: string) {
-    return this.admin.tourSlots(id, date);
-  }
-
-  @Get('tours/:id/slots/summary')
-  @ApiOperation({ summary: 'Whether a tour has any departure left to sell' })
-  @ApiEnvelopeResponse(TourSlotSummaryDto)
-  tourSlotSummary(@Param('id', ParseUUIDPipe) id: string): Promise<TourSlotSummaryDto> {
-    return this.admin.tourSlotSummary(id);
   }
 
   // --- bookings --------------------------------------------------------------
@@ -290,34 +274,6 @@ export class AdminController {
   async setTourImages(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SaveTourImagesDto) {
     await this.write.setTourImages(id, dto);
     return { message: 'Gallery updated.' };
-  }
-
-  @Post('tours/:id/slots')
-  @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Add a departure time' })
-  createSlot(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SaveSlotDto) {
-    return this.write.createSlot(id, dto);
-  }
-
-  @Post('tours/:id/slots/schedule')
-  @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Add a run of departures across dates and times' })
-  createSlotSchedule(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SaveSlotScheduleDto) {
-    return this.write.createSlotSchedule(id, dto);
-  }
-
-  @Patch('slots/:slotId')
-  @ApiOperation({ summary: 'Change a departure time or its capacity' })
-  async updateSlot(@Param('slotId', ParseUUIDPipe) slotId: string, @Body() dto: SaveSlotDto) {
-    await this.write.updateSlot(slotId, dto);
-    return { message: 'Time slot updated.' };
-  }
-
-  @Delete('slots/:slotId')
-  @ApiOperation({ summary: 'Remove a departure with no bookings' })
-  async deleteSlot(@Param('slotId', ParseUUIDPipe) slotId: string) {
-    await this.write.deleteSlot(slotId);
-    return { message: 'Time slot removed.' };
   }
 
   @Post('locations')

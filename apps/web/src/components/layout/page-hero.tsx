@@ -39,8 +39,15 @@ export function PageHero({
   // bar. The extra rung buys breathing room without giving back the height:
   // the band is still well short of what it was, because the saving came from
   // the bottom padding and the smaller type.
+  //
+  // The bottom margin, not padding, is what separates the band from the page:
+  // padding would have stretched the photograph, whereas the margin ends the
+  // image and opens canvas beneath it. Every page using this hero butted its
+  // first row of content — filters, a cart panel, a card grid — straight
+  // against the bottom edge of the photograph, so the gap lives here rather
+  // than being re-declared on each of them.
   return (
-    <section className="relative isolate overflow-hidden pb-8 pt-32 sm:pb-10 sm:pt-36">
+    <section className="relative isolate mb-10 overflow-hidden pb-8 pt-32 sm:mb-14 sm:pb-10 sm:pt-36">
       <div aria-hidden className="absolute inset-0 -z-10">
         <Image
           src={HERO_IMAGE}

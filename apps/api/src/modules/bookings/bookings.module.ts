@@ -44,8 +44,6 @@ export class BookingTourDto {
    * picture, not whatever was on the page the day they booked.
    */
   @ApiPropertyOptional({ nullable: true }) coverImage!: string | null;
-  @ApiProperty() date!: string;
-  @ApiProperty() time!: string;
   @ApiProperty() location!: string;
   @ApiProperty() travellers!: number;
   @ApiProperty({ description: 'Per-ticket price in minor units.' }) unitPriceMinor!: number;
@@ -213,11 +211,9 @@ export class BookingsService {
         title: item.tourTitle,
         slug: item.tour.slug,
         coverImage: item.tour.images[0]?.url ?? null,
-        date: item.date.toISOString().slice(0, 10),
-        time: item.time,
-        // The tour can be renamed or moved after booking; the departure and
-        // price are denormalised on the item, but the meeting point is not,
-        // so it is read live and may legitimately have changed.
+        // The tour can be renamed or moved after booking; the title and price
+        // are denormalised on the item, but the meeting point is not, so it is
+        // read live and may legitimately have changed.
         location: item.tour.location.name,
         travellers: item.quantity,
         unitPriceMinor: item.unitPrice,

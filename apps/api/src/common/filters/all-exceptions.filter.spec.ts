@@ -49,11 +49,17 @@ describe('AllExceptionsFilter', () => {
 
   it('surfaces the business error code', () => {
     const body = caught(
-      new BusinessException(BusinessErrorCode.SlotSoldOut, 'That time slot is sold out.'),
+      new BusinessException(
+        BusinessErrorCode.MaxTicketsExceeded,
+        'You can book at most 10 tickets for this tour.',
+      ),
     );
 
     expect(status).toHaveBeenCalledWith(HttpStatus.CONFLICT);
-    expect(body).toMatchObject({ error: 'SLOT_SOLD_OUT', message: 'That time slot is sold out.' });
+    expect(body).toMatchObject({
+      error: 'MAX_TICKETS_EXCEEDED',
+      message: 'You can book at most 10 tickets for this tour.',
+    });
   });
 
   it('preserves structured field errors from validation', () => {

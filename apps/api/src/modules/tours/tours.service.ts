@@ -5,13 +5,7 @@ import { buildPaginationMeta, normalizePagination } from '@pasta/utils';
 import { adultPriceMinor } from '../../common/dto/currency-query.dto';
 import { PrismaService } from '../../database/prisma.service';
 import type { Prisma } from '../../generated/prisma/client';
-import type {
-  AvailabilityDayDto,
-  ListToursQueryDto,
-  SlotDto,
-  TourDetailDto,
-  TourSummaryDto,
-} from './dto/tour.dto';
+import type { ListToursQueryDto, TourDetailDto, TourSummaryDto } from './dto/tour.dto';
 
 /** Only published, non-deleted tours are ever visible to the public site. */
 const PUBLIC_TOUR_FILTER = { status: 'PUBLISHED', deletedAt: null } as const;
@@ -142,62 +136,6 @@ export class ToursService {
       meetingPointAddress: tour.meetingPointAddress,
       maxTicketsPerTour: tour.maxTicketsPerTour,
     };
-  }
-
-  /** Departure times for one date. Sold-out slots are returned, not hidden. */
-  async slotsForDate(slug: string, date: string): Promise<SlotDto[]> {
-    const tour = await this.requireTourId(slug);
-
-    const slots = await this.prisma.tourSlot.findMany({
-      where: { tourId: tour.id, date: new Date(`${date}T00:00:00.000Z`) },
-      orderBy: { time: 'asc' },
-    });
-
-    return slots.map((slot) => {
-      const remaining = Math.max(0, slot.capacity - slot.booked);
-      return { id: slot.id, time: slot.time, available: remaining > 0, remaining };
-    });
-  }
-
-  /** One entry per day for the availability rail. */
-  async availability(slug: string, from: string, days: number): Promise<AvailabilityDayDto[]> {
-    const tour = await this.requireTourId(slug);
-
-    const start = new Date(`${from}T00:00:00.000Z`);
-    const end = new Date(start.getTime());
-    end.setUTCDate(end.getUTCDate() + days);
-
-    const slots = await this.prisma.tourSlot.findMany({
-      where: { tourId: tour.id, date: { gte: start, lt: end } },
-      select: { date: true, capacity: true, booked: true },
-    });
-
-    // A day is bookable when at least one of its slots still has a seat.
-    const bookableDays = new Set(
-      slots
-        .filter((slot) => slot.capacity - slot.booked > 0)
-        .map((slot) => slot.date.toISOString().slice(0, 10)),
-    );
-
-    return Array.from({ length: days }, (_, index) => {
-      const day = new Date(start.getTime());
-      day.setUTCDate(day.getUTCDate() + index);
-      const date = day.toISOString().slice(0, 10);
-      return { date, available: bookableDays.has(date) };
-    });
-  }
-
-  private async requireTourId(slug: string): Promise<{ id: string }> {
-    const tour = await this.prisma.tour.findFirst({
-      where: { slug, ...PUBLIC_TOUR_FILTER },
-      select: { id: true },
-    });
-
-    if (!tour) {
-      throw new NotFoundException('That tour could not be found.');
-    }
-
-    return tour;
   }
 
   /** Other published tours, for the "You might also like" rail. */

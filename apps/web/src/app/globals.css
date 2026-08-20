@@ -2,3 +2,21 @@
 
 /* Class names used by this app. */
 @source '../../src/**/*.{ts,tsx}';
+
+/*
+ * The public site's canvas.
+ *
+ * The shared theme paints it cream-100 (#fbf7f1), which the admin panel still
+ * wants — but on a site whose cards are white and whose photographs carry the
+ * warmth, a cream page read as dull rather than as warm. Near-white lets the
+ * cards, the cream bands and the footer separate from the page instead of
+ * sinking into it.
+ *
+ * Scoped to `:root:not(.dark)` rather than plain `:root` so it outranks the
+ * `.dark` block above it on specificity, not just on source order — a bare
+ * `:root` here would follow `.dark` in the cascade and paint the dark theme
+ * white too.
+ */
+:root:not(.dark) {
+  --background: #fffcfc;
+}

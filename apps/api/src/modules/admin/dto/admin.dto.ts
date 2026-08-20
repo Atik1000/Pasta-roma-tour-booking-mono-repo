@@ -152,16 +152,7 @@ export class AdminTourDto {
   @ApiProperty() priceEurMinor!: number;
   @ApiProperty({ enum: ['PUBLISHED', 'DRAFT'] }) status!: string;
   @ApiPropertyOptional({ nullable: true }) coverImage!: string | null;
-  /// Departures from today onwards. Zero means the tour cannot be booked,
-  /// whatever its status says.
-  @ApiProperty() upcomingDepartures!: number;
   @ApiProperty() updatedAt!: string;
-}
-
-export class TourSlotSummaryDto {
-  @ApiProperty({ description: 'Departures from today onwards.' }) upcoming!: number;
-  @ApiPropertyOptional({ nullable: true }) nextDate!: string | null;
-  @ApiPropertyOptional({ nullable: true }) nextTime!: string | null;
 }
 
 export class AdminBookingDto {
@@ -185,8 +176,6 @@ export class AdminBookingItemDto {
   /// a glance. Both are presentational — the money and title stay denormalised.
   @ApiProperty() location!: string;
   @ApiPropertyOptional({ nullable: true }) coverImage!: string | null;
-  @ApiProperty() date!: string;
-  @ApiProperty() time!: string;
   @ApiProperty() quantity!: number;
   @ApiProperty() unitPriceMinor!: number;
   @ApiProperty() amountMinor!: number;

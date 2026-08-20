@@ -43,7 +43,14 @@ const SOCIALS = [
 
 export function Footer() {
   return (
-    <footer className="border-border bg-cream-200/60 relative overflow-hidden border-t">
+    /*
+       The footer band is pinned to an opaque colour rather than left as
+       `bg-cream-200/60`. A translucent cream took its final shade from
+       whatever the page canvas was, so lightening the canvas would have
+       dragged the footer along with it; #f7f2e9 is exactly what that blend
+       resolved to over the old cream page, and it now holds regardless.
+    */
+    <footer className="border-border relative overflow-hidden border-t bg-[#f7f2e9] dark:bg-[#221e18]">
       <SkylineBackdrop className="text-cream-400/70" />
 
       <div className="relative mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">

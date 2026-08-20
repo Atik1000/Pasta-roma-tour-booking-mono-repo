@@ -24,12 +24,10 @@ import {
   Skeleton,
   Thumbnail,
 } from '@pasta/ui';
-import { formatClockTime, formatDate, formatMoney } from '@pasta/utils';
+import { formatMoney } from '@pasta/utils';
 import {
   AlertTriangle,
   ArrowLeft,
-  CalendarDays,
-  Clock,
   Lock,
   Mail,
   MapPin,
@@ -148,7 +146,8 @@ export function CheckoutForm() {
       if (isApiClientError(caught)) {
         setFormError(caught.message);
         setFieldErrors(caught.fieldErrors);
-        // A sold-out slot invalidates the cart we are showing.
+        // Whatever the server refused, re-read the basket: the copy on screen
+        // is the one the rejected submission was built from.
         const refreshed = await browserApi.cart.get(currency).catch(() => cart);
         setCart(refreshed);
         syncCartCount(refreshed);
@@ -255,14 +254,6 @@ export function CheckoutForm() {
                       <h3 className="font-display font-semibold">{item.title}</h3>
                       <ul className="text-muted-foreground mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm">
                         <li className="inline-flex items-center gap-1.5">
-                          <CalendarDays className="size-4" aria-hidden />
-                          {formatDate(item.date)}
-                        </li>
-                        <li className="inline-flex items-center gap-1.5">
-                          <Clock className="size-4" aria-hidden />
-                          {formatClockTime(item.time)}
-                        </li>
-                        <li className="inline-flex items-center gap-1.5">
                           <MapPin className="size-4" aria-hidden />
                           {item.location}
                         </li>
@@ -350,9 +341,7 @@ export function CheckoutForm() {
                   <Thumbnail src={item.coverImage} alt="" className="h-12 w-16" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{item.title}</p>
-                    <p className="text-muted-foreground text-xs">
-                      {formatDate(item.date)} • {formatClockTime(item.time)} • {item.location}
-                    </p>
+                    <p className="text-muted-foreground text-xs">{item.location}</p>
                     <p className="mt-1 flex justify-between text-sm">
                       <span className="text-muted-foreground">
                         {item.quantity} Adult {item.quantity === 1 ? 'Ticket' : 'Tickets'}

@@ -24,8 +24,8 @@ describe('Admin booking items (e2e)', () => {
   let reference: string;
 
   const BOOKING_FEE = 500;
-  /** The fixture tour's catalogue price. A new item is priced from this. */
-  const CATALOGUE_PRICE = 5900;
+  /** The second fixture tour's catalogue price. A new item is priced from this. */
+  const SECOND_TOUR_PRICE = 7500;
   /** What the seeded booking actually paid — deliberately not the catalogue price. */
   const BOOKED_PRICE = 1000;
 
@@ -38,7 +38,7 @@ describe('Admin booking items (e2e)', () => {
     await harness.close();
   });
 
-  /** A confirmed booking holding 2 seats on the fixture's departure. */
+  /** A confirmed booking holding 2 tickets on the fixture's tour. */
   async function seedBooking(): Promise<string> {
     const customer = await harness.prisma.customer.create({
       data: { email: 'editor-test@example.com', fullName: 'Ada Lovelace' },
@@ -57,10 +57,7 @@ describe('Admin booking items (e2e)', () => {
         items: {
           create: {
             tourId: fixture.tourId,
-            slotId: fixture.slotId,
             tourTitle: 'Colosseum Underground Tour',
-            date: new Date('2030-06-01T00:00:00.000Z'),
-            time: '09:00',
             quantity: 2,
             unitPrice: 1000,
             amount: 2000,
@@ -75,32 +72,12 @@ describe('Admin booking items (e2e)', () => {
       },
     });
 
-    // The seeded booking holds two of the slot's seats.
-    await harness.prisma.tourSlot.update({
-      where: { id: fixture.slotId },
-      data: { booked: 2 },
-    });
-
     return booking.reference;
-  }
-
-  /** A second departure on the same tour, so items can be added. */
-  async function secondSlot(capacity = 10): Promise<string> {
-    const slot = await harness.prisma.tourSlot.create({
-      data: {
-        tourId: fixture.tourId,
-        date: new Date('2030-06-02T00:00:00.000Z'),
-        time: '14:00',
-        capacity,
-      },
-    });
-
-    return slot.id;
   }
 
   beforeEach(async () => {
     await resetDatabase(harness.prisma);
-    fixture = await seedMinimal(harness.prisma, { capacity: 10, maxTicketsPerTour: 6 });
+    fixture = await seedMinimal(harness.prisma, { maxTicketsPerTour: 6 });
     reference = await seedBooking();
 
     const login = await request(server)
@@ -116,9 +93,6 @@ describe('Admin booking items (e2e)', () => {
   const itemId = async () =>
     (await harness.prisma.bookingItem.findFirstOrThrow({ where: { booking: { reference } } })).id;
 
-  const slotBooked = async (id: string) =>
-    (await harness.prisma.tourSlot.findUniqueOrThrow({ where: { id } })).booked;
-
   const totals = async () =>
     harness.prisma.booking.findUniqueOrThrow({
       where: { reference },
@@ -126,19 +100,17 @@ describe('Admin booking items (e2e)', () => {
     });
 
   describe('adding a tour', () => {
-    it('claims seats, prices from the catalogue and retotals', async () => {
-      const slotId = await secondSlot();
-
+    it('prices from the catalogue and retotals', async () => {
       const response = await auth(
         request(server).post(`/api/v1/admin/bookings/${reference}/items`).send({
-          slotId,
+          tourId: fixture.secondTourId,
           quantity: 3,
         }),
       ).expect(201);
 
       // Priced from the catalogue, not from the price this booking already
       // paid — a new line is a new sale.
-      const expected = 2 * BOOKED_PRICE + 3 * CATALOGUE_PRICE;
+      const expected = 2 * BOOKED_PRICE + 3 * SECOND_TOUR_PRICE;
 
       expect(response.body.data).toMatchObject({
         subtotal: expected,
@@ -146,7 +118,6 @@ describe('Admin booking items (e2e)', () => {
         total: expected + BOOKING_FEE,
       });
 
-      expect(await slotBooked(slotId)).toBe(3);
       expect(await totals()).toEqual({
         subtotal: expected,
         bookingFee: BOOKING_FEE,
@@ -154,14 +125,12 @@ describe('Admin booking items (e2e)', () => {
       });
     });
 
-    it('issues one ticket per seat, naming those it was given', async () => {
-      const slotId = await secondSlot();
-
+    it('issues one ticket per traveller, naming those it was given', async () => {
       const response = await auth(
         request(server)
           .post(`/api/v1/admin/bookings/${reference}/items`)
           .send({
-            slotId,
+            tourId: fixture.secondTourId,
             quantity: 2,
             holders: [{ firstName: 'Grace', lastName: 'Hopper' }],
           }),
@@ -179,48 +148,29 @@ describe('Admin booking items (e2e)', () => {
       expect(new Set(tickets.map((ticket) => ticket.code)).size).toBe(2);
     });
 
-    it('refuses to oversell a departure', async () => {
-      const slotId = await secondSlot(2);
-
+    it("refuses more tickets than the tour's own cap, writing nothing", async () => {
       const response = await auth(
         request(server).post(`/api/v1/admin/bookings/${reference}/items`).send({
-          slotId,
-          quantity: 3,
-        }),
-      ).expect(409);
-
-      expect(response.body.error).toBe('SLOT_SOLD_OUT');
-      // Nothing was written: no seats claimed, no item, no retotal.
-      expect(await slotBooked(slotId)).toBe(0);
-      expect(await harness.prisma.bookingItem.count()).toBe(1);
-      expect(await totals()).toEqual({ subtotal: 2000, bookingFee: BOOKING_FEE, total: 2500 });
-    });
-
-    it("refuses more tickets than the tour's own cap", async () => {
-      const slotId = await secondSlot(100);
-
-      const response = await auth(
-        request(server).post(`/api/v1/admin/bookings/${reference}/items`).send({
-          slotId,
+          tourId: fixture.secondTourId,
           quantity: 7,
         }),
       ).expect(409);
 
       expect(response.body.error).toBe('MAX_TICKETS_EXCEEDED');
-      expect(await slotBooked(slotId)).toBe(0);
+      expect(await harness.prisma.bookingItem.count()).toBe(1);
+      expect(await totals()).toEqual({ subtotal: 2000, bookingFee: BOOKING_FEE, total: 2500 });
     });
 
-    it('refuses the same departure twice', async () => {
+    it('refuses the same tour twice', async () => {
       const response = await auth(
         request(server).post(`/api/v1/admin/bookings/${reference}/items`).send({
-          slotId: fixture.slotId,
+          tourId: fixture.tourId,
           quantity: 1,
         }),
       ).expect(409);
 
       expect(response.body.message).toMatch(/already on this booking/);
-      // The duplicate check runs before the claim, so no seat was taken.
-      expect(await slotBooked(fixture.slotId)).toBe(2);
+      expect(await harness.prisma.bookingItem.count()).toBe(1);
     });
 
     it('refuses to edit a cancelled booking', async () => {
@@ -232,14 +182,14 @@ describe('Admin booking items (e2e)', () => {
       await auth(
         request(server)
           .post(`/api/v1/admin/bookings/${reference}/items`)
-          .send({ slotId: await secondSlot(), quantity: 1 }),
+          .send({ tourId: fixture.secondTourId, quantity: 1 }),
       ).expect(409);
     });
 
-    it('404s for a departure that does not exist', async () => {
+    it('404s for a tour that does not exist', async () => {
       await auth(
         request(server).post(`/api/v1/admin/bookings/${reference}/items`).send({
-          slotId: '00000000-0000-4000-8000-000000000000',
+          tourId: '00000000-0000-4000-8000-000000000000',
           quantity: 1,
         }),
       ).expect(404);
@@ -248,20 +198,19 @@ describe('Admin booking items (e2e)', () => {
     it('is closed to anonymous callers', async () => {
       await request(server)
         .post(`/api/v1/admin/bookings/${reference}/items`)
-        .send({ slotId: await secondSlot(), quantity: 1 })
+        .send({ tourId: fixture.secondTourId, quantity: 1 })
         .expect(401);
     });
   });
 
   describe('changing a tour', () => {
-    it('claims the extra seats when quantity goes up', async () => {
+    it('retotals when quantity goes up', async () => {
       await auth(
         request(server)
           .patch(`/api/v1/admin/bookings/${reference}/items/${await itemId()}`)
           .send({ quantity: 5 }),
       ).expect(200);
 
-      expect(await slotBooked(fixture.slotId)).toBe(5);
       expect(await totals()).toEqual({
         subtotal: 5 * BOOKED_PRICE,
         bookingFee: BOOKING_FEE,
@@ -270,7 +219,7 @@ describe('Admin booking items (e2e)', () => {
       expect(await harness.prisma.ticket.count()).toBe(5);
     });
 
-    it('releases seats when quantity goes down, keeping the earliest codes', async () => {
+    it('retotals when quantity goes down, keeping the earliest codes', async () => {
       const before = await harness.prisma.ticket.findMany({ orderBy: { createdAt: 'asc' } });
 
       await auth(
@@ -279,7 +228,6 @@ describe('Admin booking items (e2e)', () => {
           .send({ quantity: 1 }),
       ).expect(200);
 
-      expect(await slotBooked(fixture.slotId)).toBe(1);
       expect(await totals()).toEqual({
         subtotal: BOOKED_PRICE,
         bookingFee: BOOKING_FEE,
@@ -293,22 +241,14 @@ describe('Admin booking items (e2e)', () => {
       expect(after[0]?.code).toBe(before[0]?.code);
     });
 
-    it('refuses an increase the departure cannot hold, changing nothing', async () => {
-      // Shrink the departure to exactly what this booking already holds, so
-      // any increase must be refused.
-      await harness.prisma.tourSlot.update({
-        where: { id: fixture.slotId },
-        data: { capacity: 2 },
-      });
-
+    it("refuses an increase past the tour's cap, changing nothing", async () => {
       const response = await auth(
         request(server)
           .patch(`/api/v1/admin/bookings/${reference}/items/${await itemId()}`)
-          .send({ quantity: 3 }),
+          .send({ quantity: 7 }),
       ).expect(409);
 
-      expect(response.body.error).toBe('SLOT_SOLD_OUT');
-      expect(await slotBooked(fixture.slotId)).toBe(2);
+      expect(response.body.error).toBe('MAX_TICKETS_EXCEEDED');
       expect(await totals()).toEqual({
         subtotal: 2 * BOOKED_PRICE,
         bookingFee: BOOKING_FEE,
@@ -374,24 +314,21 @@ describe('Admin booking items (e2e)', () => {
   });
 
   describe('removing a tour', () => {
-    it('releases every seat and drops the fee with the last item', async () => {
+    it('drops the fee with the last item', async () => {
       await auth(
         request(server).delete(`/api/v1/admin/bookings/${reference}/items/${await itemId()}`),
       ).expect(200);
 
-      expect(await slotBooked(fixture.slotId)).toBe(0);
       // An empty booking owes nothing at all, fee included.
       expect(await totals()).toEqual({ subtotal: 0, bookingFee: 0, total: 0 });
       expect(await harness.prisma.ticket.count()).toBe(0);
     });
 
     it('keeps the fee while another tour remains', async () => {
-      const slotId = await secondSlot();
-
       await auth(
         request(server)
           .post(`/api/v1/admin/bookings/${reference}/items`)
-          .send({ slotId, quantity: 1 }),
+          .send({ tourId: fixture.secondTourId, quantity: 1 }),
       ).expect(201);
 
       await auth(
@@ -399,12 +336,10 @@ describe('Admin booking items (e2e)', () => {
       ).expect(200);
 
       expect(await totals()).toEqual({
-        subtotal: CATALOGUE_PRICE,
+        subtotal: SECOND_TOUR_PRICE,
         bookingFee: BOOKING_FEE,
-        total: CATALOGUE_PRICE + BOOKING_FEE,
+        total: SECOND_TOUR_PRICE + BOOKING_FEE,
       });
-      expect(await slotBooked(fixture.slotId)).toBe(0);
-      expect(await slotBooked(slotId)).toBe(1);
     });
 
     it('leaves an audit note behind', async () => {
@@ -415,56 +350,6 @@ describe('Admin booking items (e2e)', () => {
       const notes = await harness.prisma.bookingNote.findMany();
       expect(notes).toHaveLength(1);
       expect(notes[0]?.body).toMatch(/Removed Colosseum Underground Tour/);
-    });
-  });
-
-  describe('under concurrency', () => {
-    it('never lets simultaneous edits push a departure past capacity', async () => {
-      // 8 free seats; five operators each try to add 2 to their own booking.
-      const slotId = await secondSlot(8);
-
-      const references = await Promise.all(
-        Array.from({ length: 5 }, async (_, index) => {
-          const customer = await harness.prisma.customer.create({
-            data: { email: `race${index}@example.com`, fullName: `Racer ${index}` },
-          });
-          const booking = await harness.prisma.booking.create({
-            data: {
-              reference: `BK-RACE-${index}`,
-              customerId: customer.id,
-              status: 'CONFIRMED',
-              paymentStatus: 'PAID',
-              currency: 'EUR',
-              subtotal: 0,
-              bookingFee: 0,
-              total: 0,
-            },
-          });
-          return booking.reference;
-        }),
-      );
-
-      const results = await Promise.all(
-        references.map((entry) =>
-          auth(
-            request(server)
-              .post(`/api/v1/admin/bookings/${entry}/items`)
-              .send({ slotId, quantity: 2 }),
-          ).then(
-            (response) => response.status,
-            () => 500,
-          ),
-        ),
-      );
-
-      const created = results.filter((status) => status === 201).length;
-
-      // 8 seats at 2 each admits exactly four; the fifth must be refused.
-      expect(created).toBe(4);
-      expect(results.filter((status) => status === 409)).toHaveLength(1);
-      expect(await slotBooked(slotId)).toBe(8);
-      // And no orphan item was written for the loser.
-      expect(await harness.prisma.bookingItem.count({ where: { slotId } })).toBe(4);
     });
   });
 });

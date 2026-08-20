@@ -123,14 +123,6 @@ export { ToastProvider, useToast, type ToastOptions, type ToastTone } from './co
 
 // --- domain -------------------------------------------------------------------
 export {
-  DateStrip,
-  TimeSlotGrid,
-  type DateOption,
-  type DateStripProps,
-  type SlotOption,
-  type TimeSlotGridProps,
-} from './components/availability';
-export {
   PriceBreakdown,
   type PriceBreakdownProps,
   type PriceLine,

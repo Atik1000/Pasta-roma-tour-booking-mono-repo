@@ -20,28 +20,19 @@ import {
   useToast,
 } from '@pasta/ui';
 import { isApiClientError } from '@pasta/api-client';
-import { formatClockTime, formatMoney } from '@pasta/utils';
+import { formatMoney } from '@pasta/utils';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { adminApi } from '@/lib/session';
 
-/** Today, as YYYY-MM-DD in the browser's own timezone. */
-function today(): string {
-  const now = new Date();
-  return [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0'),
-  ].join('-');
-}
-
 /**
  * Adds a tour to an existing booking.
  *
- * The choice is tour → date → departure, because a departure only means
- * something once both are known. Sold-out times are shown but not selectable,
- * so an operator can see *why* a time is missing rather than wondering where it
- * went. The server still refuses an oversell; this is only the courtesy.
+ * Choosing the tour is the whole form. It used to be tour → date → departure,
+ * with sold-out times shown but disabled so an operator could see why a slot
+ * was missing; tours run on demand now, so there is no date to narrow and
+ * nothing to be sold out of. The server still refuses a tour already on the
+ * booking — change its quantity instead — and that refusal surfaces here.
  */
 export function AddBookingItemDialog({
   open,
@@ -57,8 +48,6 @@ export function AddBookingItemDialog({
   onAdded: () => void;
 }) {
   const [tourId, setTourId] = React.useState('');
-  const [date, setDate] = React.useState(today());
-  const [slotId, setSlotId] = React.useState('');
   const [quantity, setQuantity] = React.useState('1');
   const [error, setError] = React.useState<string | null>(null);
 
@@ -70,25 +59,13 @@ export function AddBookingItemDialog({
     enabled: open,
   });
 
-  const slots = useQuery({
-    queryKey: ['admin', 'tours', tourId, 'slots', date],
-    queryFn: () => adminApi.admin.tourSlots(tourId, date),
-    enabled: open && Boolean(tourId),
-  });
-
-  // A departure chosen for one date must not survive a change of date.
-  React.useEffect(() => {
-    setSlotId('');
-  }, [tourId, date]);
-
   const add = useMutation({
     mutationFn: () =>
-      adminApi.admin.addBookingItem(reference, { slotId, quantity: Number(quantity) || 1 }),
+      adminApi.admin.addBookingItem(reference, { tourId, quantity: Number(quantity) || 1 }),
     onSuccess: () => {
       setError(null);
-      toast.success('Tour added', 'Seats are claimed and the total has been recalculated.');
+      toast.success('Tour added', 'The booking total has been recalculated.');
       setTourId('');
-      setSlotId('');
       setQuantity('1');
       onAdded();
       onOpenChange(false);
@@ -101,23 +78,20 @@ export function AddBookingItemDialog({
   });
 
   const selectedTour = tours.data?.data.find((tour) => tour.id === tourId);
-  const available = slots.data ?? [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add a tour to {reference}</DialogTitle>
-          <DialogDescription>
-            Seats are claimed immediately and the booking total is recalculated.
-          </DialogDescription>
+          <DialogDescription>The booking total is recalculated immediately.</DialogDescription>
         </DialogHeader>
 
         <form
           className="flex flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault();
-            if (slotId) add.mutate();
+            if (tourId) add.mutate();
           }}
         >
           <FormField label="Tour" required>
@@ -131,41 +105,6 @@ export function AddBookingItemDialog({
                     {tour.title}
                   </SelectItem>
                 ))}
-              </SelectContent>
-            </Select>
-          </FormField>
-
-          <FormField label="Date" required>
-            <Input
-              type="date"
-              value={date}
-              onChange={(event) => setDate(event.target.value || today())}
-            />
-          </FormField>
-
-          <FormField
-            label="Departure"
-            required
-            hint={
-              tourId && !slots.isLoading && available.length === 0
-                ? 'No departures on that date.'
-                : undefined
-            }
-          >
-            <Select value={slotId} onValueChange={setSlotId} disabled={!tourId}>
-              <SelectTrigger>
-                <SelectValue placeholder={tourId ? 'Choose a time' : 'Choose a tour first'} />
-              </SelectTrigger>
-              <SelectContent>
-                {available.map((slot) => {
-                  const remaining = slot.capacity - slot.booked;
-                  return (
-                    <SelectItem key={slot.id} value={slot.id} disabled={remaining <= 0}>
-                      {formatClockTime(slot.time)} —{' '}
-                      {remaining > 0 ? `${remaining} seat(s) left` : 'sold out'}
-                    </SelectItem>
-                  );
-                })}
               </SelectContent>
             </Select>
           </FormField>
@@ -193,7 +132,7 @@ export function AddBookingItemDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" isLoading={add.isPending} disabled={!slotId}>
+            <Button type="submit" isLoading={add.isPending} disabled={!tourId}>
               Add Tour
             </Button>
           </DialogFooter>

@@ -1,7 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CurrencyCode } from '@pasta/types';
-import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 
 import { CURRENCY_CODES } from '../../../common/dto/currency-query.dto';
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
@@ -88,37 +87,4 @@ export class TourDetailDto extends TourSummaryDto {
   @ApiPropertyOptional({ nullable: true }) meetingPointTitle!: string | null;
   @ApiPropertyOptional({ nullable: true }) meetingPointAddress!: string | null;
   @ApiProperty({ example: 10 }) maxTicketsPerTour!: number;
-}
-
-export class SlotQueryDto {
-  @ApiProperty({ example: '2024-05-23', description: 'Calendar date, YYYY-MM-DD.' })
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'date must be in YYYY-MM-DD format.' })
-  date!: string;
-}
-
-export class AvailabilityQueryDto {
-  @ApiProperty({ example: '2024-05-21' })
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'from must be in YYYY-MM-DD format.' })
-  from!: string;
-
-  @ApiPropertyOptional({ minimum: 1, maximum: 60, default: 7 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(60)
-  days: number = 7;
-}
-
-export class SlotDto {
-  @ApiProperty() id!: string;
-  @ApiProperty({ example: '09:30' }) time!: string;
-  /** Binary by design — the "limited spots" state was removed from the product. */
-  @ApiProperty() available!: boolean;
-  @ApiProperty({ description: 'Seats still bookable.', example: 12 }) remaining!: number;
-}
-
-export class AvailabilityDayDto {
-  @ApiProperty({ example: '2024-05-23' }) date!: string;
-  @ApiProperty() available!: boolean;
 }

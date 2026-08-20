@@ -39,18 +39,6 @@ export interface TourDetail extends TourSummary {
   maxTicketsPerTour: number;
 }
 
-export interface TourSlot {
-  id: string;
-  time: string;
-  available: boolean;
-  remaining: number;
-}
-
-export interface AvailabilityDay {
-  date: string;
-  available: boolean;
-}
-
 export interface ListToursParams {
   q?: string;
   location?: string;
@@ -76,16 +64,6 @@ export class ToursResource {
 
   related(slug: string, currency?: CurrencyCode): Promise<TourSummary[]> {
     return this.http.get<TourSummary[]>(`/tours/${slug}/related`, { params: { currency } });
-  }
-
-  slots(slug: string, date: string): Promise<TourSlot[]> {
-    return this.http.get<TourSlot[]>(`/tours/${slug}/slots`, { params: { date } });
-  }
-
-  availability(slug: string, from: string, days = 7): Promise<AvailabilityDay[]> {
-    return this.http.get<AvailabilityDay[]>(`/tours/${slug}/availability`, {
-      params: { from, days },
-    });
   }
 }
 
@@ -243,14 +221,11 @@ export interface CartItem {
   tourSlug: string;
   title: string;
   location: string;
-  date: string;
-  time: string;
   quantity: number;
   unitPriceMinor: number;
   amountMinor: number;
   currency: CurrencyCode;
   coverImage: string | null;
-  remaining: number;
   maxTickets: number;
   priceChanged: boolean;
 }
@@ -276,8 +251,8 @@ export class CartResource {
     return this.http.get<Cart>('/cart', { params: { currency } });
   }
 
-  add(slug: string, slotId: string, quantity: number, currency?: CurrencyCode): Promise<Cart> {
-    return this.http.post<Cart>('/cart/items', { slug, slotId, quantity, currency });
+  add(slug: string, quantity: number, currency?: CurrencyCode): Promise<Cart> {
+    return this.http.post<Cart>('/cart/items', { slug, quantity, currency });
   }
 
   /** Re-prices every line in `currency`. A basket is never mixed-currency. */
@@ -411,8 +386,6 @@ export interface AdminTour {
   priceEurMinor: number;
   status: 'PUBLISHED' | 'DRAFT';
   coverImage: string | null;
-  /** Departures from today onwards. Zero means travellers cannot book it. */
-  upcomingDepartures: number;
   updatedAt: string;
 }
 
@@ -440,8 +413,6 @@ export interface AdminBookingItem {
   /** The tour's current location and cover photo — presentational only. */
   location: string;
   coverImage: string | null;
-  date: string;
-  time: string;
   quantity: number;
   unitPriceMinor: number;
   amountMinor: number;
@@ -734,10 +705,10 @@ export class AdminResource {
     return this.http.patch<{ message: string }>(`/admin/payments/${paymentId}`, payload);
   }
 
-  /** Adds a departure to an existing booking, claiming its seats. */
+  /** Adds a tour to an existing booking and recalculates the total. */
   addBookingItem(
     reference: string,
-    payload: { slotId: string; quantity: number; holders?: TicketHolderInput[] },
+    payload: { tourId: string; quantity: number; holders?: TicketHolderInput[] },
   ): Promise<BookingTotals & { id: string }> {
     return this.http.post<BookingTotals & { id: string }>(
       `/admin/bookings/${reference}/items`,
@@ -782,37 +753,6 @@ export class AdminResource {
 
   locations(): Promise<AdminLocation[]> {
     return this.http.get<AdminLocation[]>('/admin/locations');
-  }
-
-  tourSlots(id: string, date?: string): Promise<AdminSlot[]> {
-    return this.http.get<AdminSlot[]>(`/admin/tours/${id}/slots`, { params: { date } });
-  }
-
-  tourSlotSummary(id: string): Promise<TourSlotSummary> {
-    return this.http.get<TourSlotSummary>(`/admin/tours/${id}/slots/summary`);
-  }
-
-  createSlot(tourId: string, payload: SaveSlotPayload): Promise<{ id: string }> {
-    return this.http.post<{ id: string }>(`/admin/tours/${tourId}/slots`, payload);
-  }
-
-  /** Every date × time combination at once; existing departures are left alone. */
-  createSlotSchedule(
-    tourId: string,
-    payload: SaveSlotSchedulePayload,
-  ): Promise<{ created: number; skipped: number }> {
-    return this.http.post<{ created: number; skipped: number }>(
-      `/admin/tours/${tourId}/slots/schedule`,
-      payload,
-    );
-  }
-
-  updateSlot(slotId: string, payload: SaveSlotPayload): Promise<{ message: string }> {
-    return this.http.patch<{ message: string }>(`/admin/slots/${slotId}`, payload);
-  }
-
-  deleteSlot(slotId: string): Promise<{ message: string }> {
-    return this.http.delete<{ message: string }>(`/admin/slots/${slotId}`);
   }
 
   createLocation(payload: SaveLocationPayload): Promise<{ id: string; name: string }> {
@@ -899,35 +839,6 @@ export interface AdminTourDetail {
   updatedAt: string;
 }
 
-export interface AdminSlot {
-  id: string;
-  date: string;
-  time: string;
-  capacity: number;
-  booked: number;
-}
-
-export interface SaveSlotPayload {
-  date: string;
-  time: string;
-  capacity: number;
-}
-
-export interface SaveSlotSchedulePayload {
-  /** Calendar dates, YYYY-MM-DD. */
-  dates: string[];
-  /** 24-hour clock times, HH:mm. Every time runs on every date. */
-  times: string[];
-  capacity: number;
-}
-
-export interface TourSlotSummary {
-  /** Departures from today onwards — zero means the tour cannot be booked. */
-  upcoming: number;
-  nextDate: string | null;
-  nextTime: string | null;
-}
-
 export interface SaveLocationPayload {
   name: string;
   country: string;
@@ -979,8 +890,6 @@ export interface TravellerBookingTour {
   slug: string;
   /** Read live, so a re-photographed tour shows its current picture. */
   coverImage: string | null;
-  date: string;
-  time: string;
   location: string;
   travellers: number;
   unitPriceMinor: number;

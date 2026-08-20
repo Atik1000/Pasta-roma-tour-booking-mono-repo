@@ -16,12 +16,11 @@ const PNG = Buffer.from(
 );
 
 /**
- * The catalogue-editing surface behind the admin panel: uploads, galleries,
- * departures and destinations.
+ * The catalogue-editing surface behind the admin panel: uploads, galleries and
+ * destinations.
  *
- * The rules asserted here are the ones the admin UI states out loud — a time is
- * unique per tour and date, capacity never falls below seats already sold, and
- * a departure with bookings cannot be deleted.
+ * The departures suite that used to sit here went with the feature — tours run
+ * on demand, so there is no schedule to edit and nothing to sell out of.
  */
 describe('Admin catalogue editing (e2e)', () => {
   let harness: Harness;
@@ -126,123 +125,6 @@ describe('Admin catalogue editing (e2e)', () => {
           .put('/api/v1/admin/tours/00000000-0000-4000-8000-000000000000/images')
           .send({ urls: [] }),
       ).expect(404);
-    });
-  });
-
-  describe('departures', () => {
-    it('adds a departure and lists it back for its date', async () => {
-      const created = await auth(
-        request(server)
-          .post(`/api/v1/admin/tours/${fixture.tourId}/slots`)
-          .send({ date: '2030-07-04', time: '11:30', capacity: 15 }),
-      ).expect(201);
-
-      const list = await auth(
-        request(server).get(`/api/v1/admin/tours/${fixture.tourId}/slots?date=2030-07-04`),
-      ).expect(200);
-
-      // Narrowed by date, so the fixture's own 2030-06-01 departure is absent.
-      expect(list.body.data).toEqual([
-        { id: created.body.data.id, date: '2030-07-04', time: '11:30', capacity: 15, booked: 0 },
-      ]);
-    });
-
-    it('lists every departure when no date is given', async () => {
-      await auth(
-        request(server)
-          .post(`/api/v1/admin/tours/${fixture.tourId}/slots`)
-          .send({ date: '2030-07-04', time: '11:30', capacity: 15 }),
-      ).expect(201);
-
-      const list = await auth(
-        request(server).get(`/api/v1/admin/tours/${fixture.tourId}/slots`),
-      ).expect(200);
-
-      expect(list.body.data).toHaveLength(2);
-      expect(list.body.data.map((row: { date: string }) => row.date)).toEqual([
-        '2030-06-01',
-        '2030-07-04',
-      ]);
-    });
-
-    it('refuses a duplicate time on the same date', async () => {
-      const payload = { date: '2030-07-04', time: '11:30', capacity: 15 };
-
-      await auth(
-        request(server).post(`/api/v1/admin/tours/${fixture.tourId}/slots`).send(payload),
-      ).expect(201);
-
-      const clash = await auth(
-        request(server).post(`/api/v1/admin/tours/${fixture.tourId}/slots`).send(payload),
-      ).expect(409);
-
-      expect(clash.body.error).toBe('DUPLICATE_TIME_SLOT');
-    });
-
-    it('allows the same time on a different date', async () => {
-      for (const date of ['2030-07-04', '2030-07-05']) {
-        await auth(
-          request(server)
-            .post(`/api/v1/admin/tours/${fixture.tourId}/slots`)
-            .send({ date, time: '11:30', capacity: 15 }),
-        ).expect(201);
-      }
-    });
-
-    it('rejects a malformed date or time rather than storing it', async () => {
-      for (const payload of [
-        { date: '01-06-2030', time: '11:30', capacity: 5 },
-        { date: '2030-07-04', time: '25:00', capacity: 5 },
-        { date: '2030-07-04', time: '11:30', capacity: -1 },
-      ]) {
-        await auth(
-          request(server).post(`/api/v1/admin/tours/${fixture.tourId}/slots`).send(payload),
-        ).expect(422);
-      }
-    });
-
-    it('will not drop capacity below the seats already sold', async () => {
-      await harness.prisma.tourSlot.update({
-        where: { id: fixture.slotId },
-        data: { booked: 4 },
-      });
-
-      const response = await auth(
-        request(server)
-          .patch(`/api/v1/admin/slots/${fixture.slotId}`)
-          .send({ date: '2030-06-01', time: '09:00', capacity: 3 }),
-      ).expect(409);
-
-      expect(response.body.message).toMatch(/4 tickets are already booked/);
-    });
-
-    it('allows capacity to be raised', async () => {
-      await auth(
-        request(server)
-          .patch(`/api/v1/admin/slots/${fixture.slotId}`)
-          .send({ date: '2030-06-01', time: '09:00', capacity: fixture.slotCapacity + 5 }),
-      ).expect(200);
-
-      const slot = await harness.prisma.tourSlot.findUnique({ where: { id: fixture.slotId } });
-      expect(slot?.capacity).toBe(fixture.slotCapacity + 5);
-    });
-
-    it('deletes an empty departure but refuses one with bookings', async () => {
-      await harness.prisma.tourSlot.update({
-        where: { id: fixture.slotId },
-        data: { booked: 1 },
-      });
-
-      await auth(request(server).delete(`/api/v1/admin/slots/${fixture.slotId}`)).expect(409);
-
-      await harness.prisma.tourSlot.update({
-        where: { id: fixture.slotId },
-        data: { booked: 0 },
-      });
-
-      await auth(request(server).delete(`/api/v1/admin/slots/${fixture.slotId}`)).expect(200);
-
-      expect(await harness.prisma.tourSlot.count({ where: { id: fixture.slotId } })).toBe(0);
     });
   });
 

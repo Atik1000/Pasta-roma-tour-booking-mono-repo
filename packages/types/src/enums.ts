@@ -34,16 +34,6 @@ export const TourBulletKind = {
 } as const;
 export type TourBulletKind = (typeof TourBulletKind)[keyof typeof TourBulletKind];
 
-/**
- * Availability is binary by design decision: the "Limited spots" state was
- * struck from the Check Availability screen, so a slot is either bookable or not.
- */
-export const SlotState = {
-  Available: 'AVAILABLE',
-  SoldOut: 'SOLD_OUT',
-} as const;
-export type SlotState = (typeof SlotState)[keyof typeof SlotState];
-
 export const BookingStatus = {
   Pending: 'PENDING',
   Confirmed: 'CONFIRMED',

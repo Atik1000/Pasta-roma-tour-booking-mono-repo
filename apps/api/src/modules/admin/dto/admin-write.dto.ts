@@ -2,7 +2,6 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
-  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsEmail,
@@ -13,7 +12,6 @@ import {
   IsOptional,
   IsString,
   IsUUID,
-  Matches,
   Max,
   MaxLength,
   Min,
@@ -221,59 +219,6 @@ export class UpsertNoteDto {
   body!: string;
 }
 
-export class SaveSlotDto {
-  @ApiProperty({ example: '2030-06-01', description: 'Calendar date, YYYY-MM-DD.' })
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'date must be in YYYY-MM-DD format.' })
-  date!: string;
-
-  @ApiProperty({ example: '09:30', description: '24-hour clock time.' })
-  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'time must be in HH:mm format.' })
-  time!: string;
-
-  @ApiProperty({ example: 20 })
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  @Max(1000)
-  capacity!: number;
-}
-
-/**
- * A run of departures in one request.
- *
- * Adding them one at a time is what left new tours unbookable: a tour that runs
- * twice a day for a month is sixty separate rows, so the panel's per-date table
- * was never going to be filled in. The admin builds the date list from a range
- * and a set of weekdays; the API takes the expanded list so the rule stays in
- * one place — the client already has to draw the days it is about to create.
- */
-export class SaveSlotScheduleDto {
-  @ApiProperty({
-    type: [String],
-    example: ['2030-06-01', '2030-06-02'],
-    description: 'Calendar dates, YYYY-MM-DD.',
-  })
-  @IsArray()
-  @ArrayMinSize(1, { message: 'Choose at least one date.' })
-  @ArrayMaxSize(366)
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, { each: true, message: 'dates must be in YYYY-MM-DD format.' })
-  dates!: string[];
-
-  @ApiProperty({ type: [String], example: ['09:30', '14:00'], description: '24-hour clock times.' })
-  @IsArray()
-  @ArrayMinSize(1, { message: 'Add at least one departure time.' })
-  @ArrayMaxSize(24)
-  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { each: true, message: 'times must be in HH:mm format.' })
-  times!: string[];
-
-  @ApiProperty({ example: 20, description: 'Seats on every departure created.' })
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  @Max(1000)
-  capacity!: number;
-}
-
 export class SaveLocationDto {
   @ApiProperty({ example: 'Milan, Italy' })
   @IsString()
@@ -314,9 +259,9 @@ export class TicketHolderInputDto {
 }
 
 export class AddBookingItemDto {
-  @ApiProperty({ description: 'The departure to add. The tour is derived from it.' })
+  @ApiProperty({ description: 'The tour to add to the booking.' })
   @IsUUID('4')
-  slotId!: string;
+  tourId!: string;
 
   @ApiProperty({ example: 2 })
   @Type(() => Number)

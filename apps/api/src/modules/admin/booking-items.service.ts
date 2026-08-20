@@ -15,13 +15,11 @@ type Tx = Prisma.TransactionClient;
  * Editing what a booking contains, after it exists.
  *
  * Support staff add a tour a caller forgot, correct a quantity, or drop a
- * cancelled leg. Every one of those changes seats and money, so the same rules
- * checkout obeys apply here:
+ * cancelled leg. Tours have no departures and so no seat pool, which leaves
+ * money as the only thing an edit here moves:
  *
- *   • seats are claimed with a conditional UPDATE, so two operators editing at
- *     once cannot push a departure past capacity
- *   • released seats are floored at zero, so a bad decrement can never make a
- *     departure look emptier than it is
+ *   • the per-tour ticket cap is checked on the way in, the same ceiling the
+ *     public cart enforces
  *   • the booking total is recomputed from its items rather than adjusted by a
  *     delta, so rounding can never drift
  *
@@ -58,38 +56,6 @@ export class BookingItemsService {
   }
 
   /**
-   * Claims `quantity` seats on a slot, or refuses.
-   *
-   * Prisma cannot express a column-to-column comparison, so this is raw SQL:
-   * the WHERE clause is the check, and zero affected rows means the seats were
-   * taken between reading availability and writing it.
-   */
-  private async claimSeats(tx: Tx, slotId: string, quantity: number, tourTitle: string) {
-    const claimed = await tx.$executeRaw`
-      UPDATE "tour_slots"
-      SET "booked" = "booked" + ${quantity}, "updatedAt" = NOW()
-      WHERE "id" = ${slotId}::uuid
-        AND "booked" + ${quantity} <= "capacity"
-    `;
-
-    if (claimed === 0) {
-      throw new BusinessException(
-        BusinessErrorCode.SlotSoldOut,
-        `${tourTitle} does not have ${quantity} more seat(s) on that departure.`,
-      );
-    }
-  }
-
-  /** Returns seats to a slot. GREATEST guards against ever going negative. */
-  private async releaseSeats(tx: Tx, slotId: string, quantity: number) {
-    await tx.$executeRaw`
-      UPDATE "tour_slots"
-      SET "booked" = GREATEST("booked" - ${quantity}, 0), "updatedAt" = NOW()
-      WHERE "id" = ${slotId}::uuid
-    `;
-  }
-
-  /**
    * Recomputes subtotal and total from the items that now exist.
    *
    * The booking fee is charged once per booking, and a booking with nothing in
@@ -122,62 +88,54 @@ export class BookingItemsService {
   async addItem(reference: string, dto: AddBookingItemDto, userId?: string) {
     const booking = await this.editableBooking(reference);
 
-    const slot = await this.prisma.tourSlot.findUnique({
-      where: { id: dto.slotId },
-      include: {
-        tour: {
-          select: {
-            id: true,
-            title: true,
-            priceAdultEur: true,
-            priceAdultUsd: true,
-            maxTicketsPerTour: true,
-            deletedAt: true,
-          },
-        },
+    const tour = await this.prisma.tour.findFirst({
+      where: { id: dto.tourId, deletedAt: null },
+      select: {
+        id: true,
+        title: true,
+        priceAdultEur: true,
+        priceAdultUsd: true,
+        maxTicketsPerTour: true,
       },
     });
 
-    if (!slot || slot.tour.deletedAt) {
-      throw new NotFoundException('That departure could not be found.');
+    if (!tour) {
+      throw new NotFoundException('That tour could not be found.');
     }
 
-    if (dto.quantity > slot.tour.maxTicketsPerTour) {
+    if (dto.quantity > tour.maxTicketsPerTour) {
       throw new BusinessException(
         BusinessErrorCode.MaxTicketsExceeded,
-        `${slot.tour.title} allows at most ${slot.tour.maxTicketsPerTour} tickets.`,
+        `${tour.title} allows at most ${tour.maxTicketsPerTour} tickets.`,
       );
     }
 
     // Price comes from the catalogue, never from the caller — an admin form is
     // still an untrusted input.
-    const unitPrice =
-      booking.currency === 'USD' ? slot.tour.priceAdultUsd : slot.tour.priceAdultEur;
+    const unitPrice = booking.currency === 'USD' ? tour.priceAdultUsd : tour.priceAdultEur;
     const amount = unitPrice * dto.quantity;
 
     return this.prisma.$transaction(async (tx) => {
+      // One line per tour, matching how the public cart builds a basket. The
+      // quantity is the thing to change on a tour that is already here; a
+      // second line would just be the same tour listed twice.
       const duplicate = await tx.bookingItem.findFirst({
-        where: { bookingId: booking.id, slotId: slot.id },
+        where: { bookingId: booking.id, tourId: tour.id },
         select: { id: true },
       });
 
       if (duplicate) {
         throw new BusinessException(
-          BusinessErrorCode.DuplicateTimeSlot,
-          'That departure is already on this booking. Change its quantity instead.',
+          BusinessErrorCode.DuplicateBookingItem,
+          'That tour is already on this booking. Change its quantity instead.',
         );
       }
-
-      await this.claimSeats(tx, slot.id, dto.quantity, slot.tour.title);
 
       const item = await tx.bookingItem.create({
         data: {
           bookingId: booking.id,
-          tourId: slot.tour.id,
-          slotId: slot.id,
-          tourTitle: slot.tour.title,
-          date: slot.date,
-          time: slot.time,
+          tourId: tour.id,
+          tourTitle: tour.title,
           quantity: dto.quantity,
           unitPrice,
           amount,
@@ -190,12 +148,7 @@ export class BookingItemsService {
 
       const totals = await this.retotal(tx, booking.id);
 
-      await this.note(
-        tx,
-        booking.id,
-        `Added ${dto.quantity} × ${slot.tour.title} (${slot.date.toISOString().slice(0, 10)} ${slot.time}).`,
-        userId,
-      );
+      await this.note(tx, booking.id, `Added ${dto.quantity} × ${tour.title}.`, userId);
 
       return { id: item.id, ...totals };
     });
@@ -226,12 +179,6 @@ export class BookingItemsService {
     const delta = dto.quantity - item.quantity;
 
     return this.prisma.$transaction(async (tx) => {
-      if (delta > 0) {
-        await this.claimSeats(tx, item.slotId, delta, item.tourTitle);
-      } else if (delta < 0) {
-        await this.releaseSeats(tx, item.slotId, -delta);
-      }
-
       // The unit price stays as booked: a catalogue price change must not
       // silently reprice a booking somebody already agreed to.
       await tx.bookingItem.update({
@@ -311,14 +258,12 @@ export class BookingItemsService {
 
     const item = await this.prisma.bookingItem.findFirst({
       where: { id: itemId, bookingId: booking.id },
-      select: { id: true, slotId: true, quantity: true, tourTitle: true },
+      select: { id: true, quantity: true, tourTitle: true },
     });
 
     if (!item) throw new NotFoundException('That tour is not on this booking.');
 
     return this.prisma.$transaction(async (tx) => {
-      await this.releaseSeats(tx, item.slotId, item.quantity);
-
       // Tickets cascade with the item.
       await tx.bookingItem.delete({ where: { id: item.id } });
 

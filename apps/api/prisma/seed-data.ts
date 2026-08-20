@@ -24,8 +24,6 @@ export interface SeedTour {
   included: string[];
   goodToKnow: string[];
   plans: { title: string; description: string }[];
-  times: string[];
-  capacity: number;
 }
 
 export const LOCATIONS = [
@@ -44,10 +42,6 @@ export const BLOG_CATEGORIES = [
   { name: 'Local Tips', slug: 'local-tips' },
   { name: 'News & Updates', slug: 'news-and-updates' },
 ] as const;
-
-const MORNING = ['09:00', '09:30', '10:30', '12:00', '14:00', '15:30', '17:00'];
-const SHORT_DAY = ['09:00', '11:00', '14:00', '16:00'];
-const FULL_DAY = ['07:30'];
 
 /** The eight tours that appear by name in the designs, plus catalogue filler. */
 export const TOURS: SeedTour[] = [
@@ -104,8 +98,6 @@ export const TOURS: SeedTour[] = [
         description: 'Hear captivating stories about gladiators, emperors, and epic battles.',
       },
     ],
-    times: MORNING,
-    capacity: 20,
   },
   {
     title: 'Vatican Museums & Sistine Chapel',
@@ -144,8 +136,6 @@ export const TOURS: SeedTour[] = [
       { title: 'Raphael Rooms', description: 'Explore the papal apartments painted by Raphael.' },
       { title: 'Sistine Chapel', description: 'Finish beneath Michelangelo’s ceiling.' },
     ],
-    times: MORNING,
-    capacity: 25,
   },
   {
     title: 'Rome Hop-On Hop-Off Bus Tour',
@@ -178,8 +168,6 @@ export const TOURS: SeedTour[] = [
       { title: 'Explore Freely', description: 'Hop off wherever you like and rejoin later.' },
       { title: 'Evening Loop', description: 'Catch the final loop for sunset views.' },
     ],
-    times: ['09:00', '10:00', '11:00', '12:00'],
-    capacity: 60,
   },
   {
     title: 'Florence Day Trip from Rome',
@@ -213,8 +201,6 @@ export const TOURS: SeedTour[] = [
       { title: 'Free Time', description: 'Explore, shop or eat at your own pace.' },
       { title: 'Return', description: 'Regroup and take the evening train back to Rome.' },
     ],
-    times: FULL_DAY,
-    capacity: 16,
   },
   {
     title: 'Rome Evening Walking Tour',
@@ -243,8 +229,6 @@ export const TOURS: SeedTour[] = [
       { title: 'Pantheon', description: 'Admire the ancient dome by night.' },
       { title: 'Trevi Fountain', description: 'Toss a coin and make a wish.' },
     ],
-    times: ['18:00', '19:00', '20:00'],
-    capacity: 18,
   },
   {
     title: 'Trastevere Food Tour',
@@ -277,8 +261,6 @@ export const TOURS: SeedTour[] = [
       { title: 'Roman Pasta', description: 'Try cacio e pepe made the traditional way.' },
       { title: 'Dolci', description: 'Finish with tiramisù and an espresso.' },
     ],
-    times: ['11:00', '17:00', '18:30'],
-    capacity: 12,
   },
   {
     title: 'Venice Gondola Ride',
@@ -301,8 +283,6 @@ export const TOURS: SeedTour[] = [
       { title: 'Boarding', description: 'Meet your gondolier at the station.' },
       { title: 'Canal Cruise', description: 'Drift past palazzi and under stone bridges.' },
     ],
-    times: SHORT_DAY,
-    capacity: 6,
   },
   {
     title: 'Tuscany Wine Tour',
@@ -327,8 +307,6 @@ export const TOURS: SeedTour[] = [
       { title: 'Tuscan Lunch', description: 'Enjoy a long lunch with local produce.' },
       { title: 'Second Winery', description: 'Finish with a reserve tasting.' },
     ],
-    times: FULL_DAY,
-    capacity: 14,
   },
 ];
 

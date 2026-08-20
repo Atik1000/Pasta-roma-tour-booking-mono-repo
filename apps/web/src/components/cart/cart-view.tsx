@@ -15,13 +15,11 @@ import {
   Skeleton,
   Thumbnail,
 } from '@pasta/ui';
-import { formatClockTime, formatDate, formatMoney } from '@pasta/utils';
+import { formatMoney } from '@pasta/utils';
 import {
   AlertTriangle,
   ArrowLeft,
-  CalendarDays,
   ChevronRight,
-  Clock,
   Headphones,
   Lock,
   MapPin,
@@ -169,14 +167,6 @@ export function CartView() {
                   <h2 className="font-display text-lg font-semibold">{item.title}</h2>
                   <ul className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm">
                     <li className="inline-flex items-center gap-1.5">
-                      <CalendarDays className="size-4" aria-hidden />
-                      {formatDate(item.date)}
-                    </li>
-                    <li className="inline-flex items-center gap-1.5">
-                      <Clock className="size-4" aria-hidden />
-                      {formatClockTime(item.time)}
-                    </li>
-                    <li className="inline-flex items-center gap-1.5">
                       <MapPin className="size-4" aria-hidden />
                       {item.location}
                     </li>
@@ -236,8 +226,8 @@ export function CartView() {
                             value={item.quantity}
                             disabled={pendingId !== null}
                             min={1}
-                            // Never offer more than the tour allows or the slot holds.
-                            max={Math.min(item.maxTickets, item.quantity + item.remaining)}
+                            // The tour's own per-booking cap is the only ceiling.
+                            max={item.maxTickets}
                             onChange={(quantity) =>
                               void mutate(item.id, () =>
                                 browserApi.cart.updateQuantity(item.id, quantity, currency),

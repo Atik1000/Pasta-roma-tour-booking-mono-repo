@@ -145,7 +145,7 @@ export function ConfirmationStatus({ reference }: { reference: string }) {
           </li>
           <li className="flex gap-2.5">
             <CalendarClock className="text-primary mt-0.5 size-4 shrink-0" aria-hidden />
-            Please arrive 15 minutes before each departure.
+            We will be in touch to arrange a time that suits you.
           </li>
         </ul>
 
@@ -206,7 +206,7 @@ export function ConfirmationStatus({ reference }: { reference: string }) {
         </li>
         <li className="flex gap-2.5">
           <CalendarClock className="text-primary mt-0.5 size-4 shrink-0" aria-hidden />
-          Please arrive 15 minutes before each departure.
+          We will be in touch to arrange a time that suits you.
         </li>
       </ul>
 

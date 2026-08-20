@@ -20,12 +20,10 @@ import {
   Thumbnail,
   useToast,
 } from '@pasta/ui';
-import { formatClockTime, formatDate, formatDateTime, formatMoney } from '@pasta/utils';
+import { formatDateTime, formatMoney } from '@pasta/utils';
 import {
   ArrowLeft,
   Briefcase,
-  CalendarDays,
-  Clock,
   Mail,
   MapPin,
   MessageSquare,
@@ -513,14 +511,6 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
                           </h3>
                           <ul className="text-muted-foreground mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
                             <li className="inline-flex items-center gap-1.5">
-                              <CalendarDays className="size-4" aria-hidden />
-                              {formatDate(item.date)}
-                            </li>
-                            <li className="inline-flex items-center gap-1.5">
-                              <Clock className="size-4" aria-hidden />
-                              {formatClockTime(item.time)}
-                            </li>
-                            <li className="inline-flex items-center gap-1.5">
                               <MapPin className="size-4" aria-hidden />
                               {item.location}
                             </li>
@@ -848,7 +838,7 @@ export function BookingDetail({ booking }: { booking: AdminBookingDetail }) {
         title="Remove this tour from the booking?"
         description={
           pendingRemoval
-            ? `${pendingRemoval.title} and its ${pendingRemoval.quantity} ticket(s) will be removed, and the seats released back to the departure.`
+            ? `${pendingRemoval.title} and its ${pendingRemoval.quantity} ticket(s) will be removed and the booking total recalculated.`
             : ''
         }
         confirmLabel="Remove tour"

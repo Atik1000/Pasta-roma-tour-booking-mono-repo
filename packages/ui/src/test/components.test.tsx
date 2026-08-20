@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { Button } from '../components/button';
-import { DateStrip, TimeSlotGrid } from '../components/availability';
 import { Pagination } from '../components/pagination';
 import { PriceBreakdown } from '../components/price-breakdown';
 import { QuantityStepper } from '../components/quantity-stepper';
@@ -11,8 +10,8 @@ import { StatusPill } from '../components/status-pill';
 
 /**
  * These cover the behaviour that protects money and accessibility: quantity
- * clamping, sold-out slots being unselectable, correct currency arithmetic,
- * and status colours staying consistent.
+ * clamping, correct currency arithmetic, and status colours staying
+ * consistent.
  */
 
 describe('QuantityStepper', () => {
@@ -53,62 +52,6 @@ describe('QuantityStepper', () => {
     render(<QuantityStepper label="Adult tickets" value={3} onChange={vi.fn()} />);
 
     expect(screen.getByRole('status', { name: 'Adult tickets' })).toHaveTextContent('3');
-  });
-});
-
-describe('TimeSlotGrid', () => {
-  const slots = [
-    { id: 'a', time: '09:00', available: true },
-    { id: 'b', time: '18:30', available: false },
-  ];
-
-  it('formats times in 12-hour clock', () => {
-    render(<TimeSlotGrid slots={slots} onChange={vi.fn()} />);
-
-    expect(screen.getByText('09:00 AM')).toBeInTheDocument();
-    expect(screen.getByText('06:30 PM')).toBeInTheDocument();
-  });
-
-  it('shows sold-out slots but makes them unselectable', async () => {
-    const user = userEvent.setup();
-    const onChange = vi.fn();
-
-    render(<TimeSlotGrid slots={slots} onChange={onChange} />);
-
-    const soldOut = screen.getByRole('radio', { name: /06:30 PM/i });
-    expect(soldOut).toBeDisabled();
-
-    await user.click(soldOut);
-    expect(onChange).not.toHaveBeenCalled();
-  });
-
-  it('marks only the selected slot as checked', () => {
-    render(<TimeSlotGrid slots={slots} value="a" onChange={vi.fn()} />);
-
-    expect(screen.getByRole('radio', { name: /09:00 AM/i })).toBeChecked();
-  });
-});
-
-describe('DateStrip', () => {
-  it('disables days with no availability', async () => {
-    const user = userEvent.setup();
-    const onChange = vi.fn();
-
-    render(
-      <DateStrip
-        dates={[
-          { date: '2030-06-01', available: true },
-          { date: '2030-06-02', available: false },
-        ]}
-        onChange={onChange}
-      />,
-    );
-
-    const soldOut = screen.getAllByRole('radio')[1];
-    expect(soldOut).toBeDisabled();
-
-    await user.click(soldOut!);
-    expect(onChange).not.toHaveBeenCalled();
   });
 });
 

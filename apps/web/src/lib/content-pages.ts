@@ -35,7 +35,7 @@ export const CONTENT_PAGES: ContentPage[] = [
     blocks: [
       {
         heading: 'Before you book',
-        body: 'Every tour page lists the duration, meeting point, what is included and what to bring. Availability is live: if a time slot is shown as available, those seats are still open.',
+        body: 'Every tour page lists the duration, meeting point, what is included and what to bring. Tours run on demand — there is no fixed timetable to work around, so anything in the catalogue can be booked.',
       },
       {
         heading: 'After you book',
@@ -100,8 +100,8 @@ export const CONTENT_PAGES: ContentPage[] = [
         body: 'Search by keyword or filter by location, then sort by price or duration. Every listing shows the starting price per adult.',
       },
       {
-        heading: '2. Check availability',
-        body: 'Pick a date, choose a departure time and set how many travellers are coming. Sold-out slots are shown but cannot be selected.',
+        heading: '2. Choose your party size',
+        body: 'Set how many travellers are coming and add the tour to your cart. There is no date to pick — we contact you after booking to agree a time that suits you.',
       },
       {
         heading: '3. Add ticket holders',
@@ -125,7 +125,7 @@ export const CONTENT_PAGES: ContentPage[] = [
       },
       {
         heading: 'Inside 24 hours',
-        body: 'Cancellations made less than 24 hours before departure are non-refundable. By that point your guide is scheduled and entrance tickets are issued in your name.',
+        body: 'Cancellations made less than 24 hours before the agreed start time are non-refundable. By that point your guide is scheduled and entrance tickets are issued in your name.',
       },
       {
         heading: 'If we cancel',

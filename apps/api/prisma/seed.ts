@@ -61,17 +61,13 @@ function dateOnly(date: Date): Date {
  * Every date is relative to the day the seed runs.
  *
  * This used to be a fixed constant so that successive seeds were byte-identical.
- * That is a real convenience, but it made the catalogue unbookable the moment
- * real time moved past the anchor: departures were generated in the past, the
- * availability endpoint correctly returned nothing, and the booking widget had
- * no date to offer. Determinism is preserved where it matters — the PRNG is
- * seeded, so the *shape* of the data is identical between runs — while the
- * dates track reality.
+ * That is a real convenience, but it left every seeded booking stamped with a
+ * date receding further into the past, so the dashboard's date-ranged panels
+ * emptied out as time moved on. Determinism is preserved where it matters —
+ * the PRNG is seeded, so the *shape* of the data is identical between runs —
+ * while the dates track reality.
  */
 const TODAY = dateOnly(new Date());
-
-/** How many days of departures each tour gets. */
-const SLOT_DAYS = 365;
 
 const FIRST_NAMES = [
   'John',
@@ -148,7 +144,6 @@ async function reset(): Promise<void> {
     prisma.customer.deleteMany(),
     prisma.cartItem.deleteMany(),
     prisma.cart.deleteMany(),
-    prisma.tourSlot.deleteMany(),
     prisma.tourPlan.deleteMany(),
     prisma.tourBullet.deleteMany(),
     prisma.tourImage.deleteMany(),
@@ -327,18 +322,6 @@ async function seedCatalogue(): Promise<void> {
             description: plan.description,
           })),
         },
-        // A year of availability, starting a week back so the admin screens
-        // have both past and future departures. Generous on purpose: a demo
-        // environment should not run out of bookable dates in a few months.
-        slots: {
-          create: Array.from({ length: SLOT_DAYS }, (_, dayOffset) =>
-            tour.times.map((time) => ({
-              date: dateOnly(addDays(TODAY, dayOffset - 7)),
-              time,
-              capacity: tour.capacity,
-            })),
-          ).flat(),
-        },
       },
     });
   }
@@ -389,13 +372,13 @@ async function seedBlogs(editorId: string): Promise<void> {
 
 /** 152 bookings: 98 confirmed, 28 pending, 26 cancelled — matching the admin KPIs. */
 async function seedBookings(adminId: string): Promise<void> {
-  const bookableSlots = await prisma.tourSlot.findMany({
-    where: { tour: { status: 'PUBLISHED' } },
-    include: { tour: { select: { id: true, title: true, priceAdultEur: true } } },
-    orderBy: [{ date: 'asc' }, { time: 'asc' }],
+  const bookableTours = await prisma.tour.findMany({
+    where: { status: 'PUBLISHED' },
+    select: { id: true, title: true, priceAdultEur: true },
+    orderBy: { sortOrder: 'asc' },
   });
 
-  if (bookableSlots.length === 0) throw new Error('No bookable slots were created.');
+  if (bookableTours.length === 0) throw new Error('No bookable tours were created.');
 
   const plan: { status: 'CONFIRMED' | 'PENDING' | 'CANCELLED'; count: number }[] = [
     { status: 'CONFIRMED', count: 98 },
@@ -418,16 +401,17 @@ async function seedBookings(adminId: string): Promise<void> {
       });
 
       const itemCount = between(1, 3);
-      const chosen = Array.from({ length: itemCount }, () => pick(bookableSlots));
+      const chosen = Array.from({ length: itemCount }, () => pick(bookableTours));
+      // One line per tour, the same rule the cart and the admin editor apply.
       const unique = chosen.filter(
-        (slot, position) => chosen.findIndex((other) => other.id === slot.id) === position,
+        (tour, position) => chosen.findIndex((other) => other.id === tour.id) === position,
       );
 
-      const items = unique.map((slot) => {
+      const items = unique.map((tour) => {
         const quantity = between(1, 4);
-        const unitPrice = slot.tour.priceAdultEur;
+        const unitPrice = tour.priceAdultEur;
         return {
-          slot,
+          tour,
           quantity,
           unitPrice,
           amount: unitPrice * quantity,
@@ -458,11 +442,8 @@ async function seedBookings(adminId: string): Promise<void> {
           expiresAt: status === 'PENDING' ? new Date(Date.now() + 7 * 86_400_000) : null,
           items: {
             create: items.map((item) => ({
-              tourId: item.slot.tour.id,
-              slotId: item.slot.id,
-              tourTitle: item.slot.tour.title,
-              date: item.slot.date,
-              time: item.slot.time,
+              tourId: item.tour.id,
+              tourTitle: item.tour.title,
               quantity: item.quantity,
               unitPrice: item.unitPrice,
               amount: item.amount,
@@ -470,7 +451,7 @@ async function seedBookings(adminId: string): Promise<void> {
                 create: Array.from({ length: item.quantity }, (_, ticketIndex) => ({
                   holderFirstName: pick(FIRST_NAMES),
                   holderLastName: lastName,
-                  code: `TK-${sequence}-${item.slot.id.slice(0, 4)}-${ticketIndex + 1}`,
+                  code: `TK-${sequence}-${item.tour.id.slice(0, 4)}-${ticketIndex + 1}`,
                 })),
               },
             })),
@@ -493,16 +474,6 @@ async function seedBookings(adminId: string): Promise<void> {
             refundedAmount: status === 'CANCELLED' ? subtotal + bookingFee : 0,
           },
         });
-      }
-
-      // Only live bookings hold seats.
-      if (status !== 'CANCELLED') {
-        for (const item of items) {
-          await prisma.tourSlot.update({
-            where: { id: item.slot.id },
-            data: { booked: { increment: item.quantity } },
-          });
-        }
       }
 
       if (status === 'CANCELLED' && index % 5 === 0) {
@@ -528,7 +499,7 @@ async function main(): Promise<void> {
   console.info('Seeding users…');
   const { adminId, editorId } = await seedUsers();
 
-  console.info('Seeding locations, tours, availability…');
+  console.info('Seeding locations and tours…');
   await seedCatalogue();
 
   console.info('Seeding blog content…');
@@ -537,16 +508,15 @@ async function main(): Promise<void> {
   console.info('Seeding bookings, tickets and payments…');
   await seedBookings(adminId);
 
-  const [tours, published, slots, bookings, blogs] = await Promise.all([
+  const [tours, published, bookings, blogs] = await Promise.all([
     prisma.tour.count(),
     prisma.tour.count({ where: { status: 'PUBLISHED' } }),
-    prisma.tourSlot.count(),
     prisma.booking.count(),
     prisma.blog.count(),
   ]);
 
   console.info(
-    `Done. ${tours} tours (${published} published), ${slots} slots, ${bookings} bookings, ${blogs} blog posts.`,
+    `Done. ${tours} tours (${published} published), ${bookings} bookings, ${blogs} blog posts.`,
   );
   console.info('Admin login: admin@pastaromatour.com / ChangeMe123!');
 }

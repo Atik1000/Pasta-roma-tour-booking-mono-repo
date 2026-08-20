@@ -33,14 +33,6 @@ function endOfDay(date?: string): Date | undefined {
 }
 
 /**
- * Today at UTC midnight. Departure dates are stored as bare dates, so "still to
- * come" is a comparison against the start of today rather than the moment.
- */
-function startOfUtcToday(): Date {
-  return new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
-}
-
-/**
  * A Prisma date filter for a `from`/`to` pair, or undefined when neither bound
  * was given — an empty `{}` would still narrow nothing but reads as a filter.
  */
@@ -317,19 +309,6 @@ export class AdminService {
       this.prisma.tour.count({ where }),
     ]);
 
-    // A published tour with no departure ahead of it cannot be booked, and
-    // nothing on this screen used to say so — the row looked identical to a
-    // fully scheduled one. Counted for the page only, not the whole table.
-    const upcoming = rows.length
-      ? await this.prisma.tourSlot.groupBy({
-          by: ['tourId'],
-          where: { tourId: { in: rows.map((row) => row.id) }, date: { gte: startOfUtcToday() } },
-          _count: { _all: true },
-        })
-      : [];
-
-    const upcomingByTour = new Map(upcoming.map((entry) => [entry.tourId, entry._count._all]));
-
     return {
       data: rows.map((row) => ({
         id: row.id,
@@ -343,7 +322,6 @@ export class AdminService {
         priceEurMinor: row.priceAdultEur,
         status: row.status,
         coverImage: row.images[0]?.url ?? null,
-        upcomingDepartures: upcomingByTour.get(row.id) ?? 0,
         updatedAt: row.updatedAt.toISOString(),
       })),
       meta: buildPaginationMeta(total, page, limit),
@@ -451,53 +429,6 @@ export class AdminService {
       country: row.country,
       tourCount: row._count.tours,
     }));
-  }
-
-  /** Departures for one tour, optionally narrowed to a single date. */
-  async tourSlots(tourId: string, date?: string) {
-    const rows = await this.prisma.tourSlot.findMany({
-      where: {
-        tourId,
-        ...(date ? { date: new Date(`${date}T00:00:00.000Z`) } : {}),
-      },
-      orderBy: [{ date: 'asc' }, { time: 'asc' }],
-    });
-
-    return rows.map((row) => ({
-      id: row.id,
-      date: row.date.toISOString().slice(0, 10),
-      time: row.time,
-      capacity: row.capacity,
-      booked: row.booked,
-    }));
-  }
-
-  /**
-   * Whether this tour can be booked at all, in one cheap read.
-   *
-   * The departures table only ever shows one date, so a tour scheduled for next
-   * month and a tour scheduled for no day at all look the same on the day you
-   * open it. This is what the editor warns from.
-   */
-  async tourSlotSummary(
-    tourId: string,
-  ): Promise<{ upcoming: number; nextDate: string | null; nextTime: string | null }> {
-    const from = startOfUtcToday();
-
-    const [upcoming, next] = await Promise.all([
-      this.prisma.tourSlot.count({ where: { tourId, date: { gte: from } } }),
-      this.prisma.tourSlot.findFirst({
-        where: { tourId, date: { gte: from } },
-        orderBy: [{ date: 'asc' }, { time: 'asc' }],
-        select: { date: true, time: true },
-      }),
-    ]);
-
-    return {
-      upcoming,
-      nextDate: next ? next.date.toISOString().slice(0, 10) : null,
-      nextTime: next?.time ?? null,
-    };
   }
 
   // --- bookings --------------------------------------------------------------
@@ -632,8 +563,6 @@ export class AdminService {
         title: item.tourTitle,
         location: item.tour.location.name,
         coverImage: item.tour.images[0]?.url ?? null,
-        date: item.date.toISOString().slice(0, 10),
-        time: item.time,
         quantity: item.quantity,
         unitPriceMinor: item.unitPrice,
         amountMinor: item.amount,
