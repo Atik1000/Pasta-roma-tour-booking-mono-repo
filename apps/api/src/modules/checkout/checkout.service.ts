@@ -9,7 +9,25 @@ import { BusinessErrorCode, BusinessException } from '../../common/exceptions/bu
 import { PrismaService } from '../../database/prisma.service';
 import { BOOKING_FEE_MINOR } from '../cart/cart.service';
 import { MailService } from '../mail/mail.service';
-import type { CheckoutDto, CheckoutResultDto } from './dto/checkout.dto';
+import { PayPalClient } from '../payments/paypal/paypal.client';
+import {
+  CHECKOUT_PAYMENT_METHODS,
+  type CheckoutDto,
+  type CheckoutPaymentMethod,
+  type CheckoutResultDto,
+} from './dto/checkout.dto';
+
+/**
+ * How long a booking waiting on an online payment holds its place.
+ *
+ * Matches the 30 minutes the payment page tells the traveller, and is what
+ * `expirePendingBookings` sweeps against. Methods that settle off-platform get
+ * no expiry at all — see the note in `create`.
+ */
+const ONLINE_PAYMENT_WINDOW_MS = 30 * 60_000;
+
+/** Methods that are collected here rather than settled away from the platform. */
+const ONLINE_METHODS = new Set<CheckoutPaymentMethod>(['PAYPAL']);
 
 @Injectable()
 export class CheckoutService {
@@ -18,7 +36,23 @@ export class CheckoutService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
+    private readonly paypal: PayPalClient,
   ) {}
+
+  /**
+   * Which methods this deployment is currently offering.
+   *
+   * An online gateway appears only once it is configured. Offering one that
+   * cannot take money is how `CARD` used to produce bookings that dead-ended on
+   * a 503 payment screen and were swept away half an hour later — and the
+   * browser has no other way to know, because the credentials deliberately
+   * never leave the server.
+   */
+  availableMethods(): CheckoutPaymentMethod[] {
+    return CHECKOUT_PAYMENT_METHODS.filter(
+      (method) => method !== 'PAYPAL' || this.paypal.isEnabled,
+    );
+  }
 
   /** `BK-2024-0521`, unique per year. */
   private async nextReference(): Promise<string> {
@@ -95,18 +129,39 @@ export class CheckoutService {
     const reference = await this.nextReference();
 
     /**
-     * Both offered methods settle away from the platform, so both confirm the
+     * `CASH` and `PAY_LATER` settle away from the platform, so both confirm the
      * booking on creation and never expire.
      *
      * The alternative would be to leave them PENDING with a 30-minute hold, the
-     * way a card booking waits on its Stripe webhook. But there is no such
-     * signal here — nobody is going to tell the server that a traveller intends
-     * to turn up and pay — so a hold would just have `expirePendingBookings`
+     * way an online booking waits on its gateway. But there is no such signal
+     * here — nobody is going to tell the server that a traveller intends to
+     * turn up and pay — so a hold would just have `expirePendingBookings`
      * cancel every one of these half an hour after it was made. The booking is
      * genuinely committed; `paymentStatus` stays PENDING until staff record the
      * money against the booking.
+     *
+     * `PAYPAL` is the opposite case and gets the hold: there *is* a signal
+     * coming, and a booking nobody paid for should not sit in the panel as
+     * confirmed for ever. It stays PENDING until PayPal's capture — or its
+     * webhook — says the money moved.
      */
     const method = dto.paymentMethod ?? 'CASH';
+
+    /**
+     * Refused here rather than on the payment page.
+     *
+     * By the time a traveller reaches `/checkout/pay` the booking exists, and
+     * an unconfigured gateway would leave it sitting there until the sweeper
+     * cancelled it. Nothing is written if the money cannot be collected.
+     */
+    if (ONLINE_METHODS.has(method) && !this.paypal.isEnabled) {
+      throw new BusinessException(
+        BusinessErrorCode.PaymentFailed,
+        'Online payment is not available at the moment. Please choose another way to pay.',
+      );
+    }
+
+    const requiresPayment = ONLINE_METHODS.has(method);
     const payAtMeetingPoint = method === 'CASH';
 
     const booking = await this.prisma.$transaction(async (tx) => {
@@ -122,14 +177,15 @@ export class CheckoutService {
         data: {
           reference,
           customerId: customer.id,
-          status: 'CONFIRMED',
+          status: requiresPayment ? 'PENDING' : 'CONFIRMED',
           paymentStatus: 'PENDING',
           currency,
           subtotal,
           bookingFee: BOOKING_FEE_MINOR,
           total,
-          // No expiry: neither method is a hold waiting on a payment signal.
-          expiresAt: null,
+          // An off-platform method is not a hold waiting on a payment signal,
+          // so it gets no expiry; an online one does.
+          expiresAt: requiresPayment ? new Date(Date.now() + ONLINE_PAYMENT_WINDOW_MS) : null,
           items: {
             create: priced.map((item) => {
               const holders = dto.ticketHolders.slice(holderIndex, holderIndex + item.quantity);
@@ -155,6 +211,11 @@ export class CheckoutService {
             create: {
               method,
               status: 'PENDING',
+              // The gateway is named up front so the payment page can tell
+              // "opened with PayPal" from "opened with whatever came before",
+              // and so an operator reading the row knows which dashboard holds
+              // it before a capture has even been attempted.
+              ...(requiresPayment ? { provider: 'PAYPAL' as const } : {}),
               amount: total,
               currency,
             },
@@ -169,8 +230,29 @@ export class CheckoutService {
 
     const amountDue = formatMoney(total, currency);
 
-    // Both bookings are confirmed; the two mails differ only in where the
-    // traveller is told to settle up.
+    /**
+     * An online booking is not confirmed yet, so it gets no confirmation mail.
+     *
+     * The real one — with the tickets attached — is sent by `PaymentLedger`
+     * when the payment lands. Sending "your booking is confirmed" here would
+     * mean every abandoned PayPal checkout left a traveller holding a mail for
+     * a booking the sweeper cancelled half an hour later.
+     */
+    if (requiresPayment) {
+      return {
+        reference: booking.reference,
+        bookingId: booking.id,
+        totalMinor: booking.total,
+        currency,
+        status: 'PENDING',
+        paymentMethod: method,
+        paymentIntentClientSecret: null,
+        requiresPayment: true,
+      };
+    }
+
+    // Both remaining bookings are confirmed; the two mails differ only in where
+    // the traveller is told to settle up.
     const settlement = payAtMeetingPoint
       ? `Please bring <strong>${amountDue}</strong> in cash to the meeting point. Payment is taken there before the tour starts.`
       : `<strong>${amountDue}</strong> is due before the tour starts. We will be in touch to arrange payment.`;
@@ -206,10 +288,12 @@ export class CheckoutService {
       currency,
       status: 'CONFIRMED',
       paymentMethod: method,
-      // Neither offered method is collected by Stripe, so there is never an
+      // Neither remaining method is collected by Stripe, so there is never an
       // intent to hand back. Restoring CARD to CHECKOUT_PAYMENT_METHODS is what
-      // brings this field back into use.
+      // brings this field back into use; PayPal returns above and opens its
+      // order on the payment page instead, where the amount is re-read.
       paymentIntentClientSecret: null,
+      requiresPayment: false,
     };
   }
 }

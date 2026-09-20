@@ -2,6 +2,7 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 
 import {
+  cookieFrom,
   createHarness,
   resetDatabase,
   seedMinimal,
@@ -16,8 +17,9 @@ import {
  * The point is that an unconfigured environment degrades honestly: the routes
  * exist, they are reachable, authorisation is still enforced, and they answer
  * 503 rather than 500 or, worse, pretending to succeed. Each gateway's own
- * behaviour is covered by `stripe-payments.service.spec.ts` and
- * `revolut-payments.service.spec.ts`, which stub the client so the rules are
+ * behaviour is covered by `stripe-payments.service.spec.ts`,
+ * `revolut-payments.service.spec.ts` and `paypal-payments.service.spec.ts`,
+ * which stub the client so the rules are
  * verifiable without live keys.
  */
 describe('Payments (e2e, no gateway configured)', () => {
@@ -109,6 +111,61 @@ describe('Payments (e2e, no gateway configured)', () => {
         .set('revolut-request-timestamp', String(Date.now()))
         .send({ event: 'ORDER_COMPLETED', order_id: 'ord_x' })
         .expect(503);
+    });
+
+    it('answers 503 on the PayPal webhook too, on its own path', async () => {
+      await request(server)
+        .post('/api/v1/payments/webhook/paypal')
+        .set('paypal-auth-algo', 'SHA256withRSA')
+        .set('paypal-cert-url', 'https://api.sandbox.paypal.com/v1/notifications/certs/CERT-1')
+        .set('paypal-transmission-id', 'tx-1')
+        .set('paypal-transmission-sig', 'sig-1')
+        .set('paypal-transmission-time', new Date().toISOString())
+        .send({ event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: 'cap_x' } })
+        .expect(503);
+    });
+
+    it('answers 503 on the PayPal capture rather than 500', async () => {
+      await request(server)
+        .post(`/api/v1/checkout/${reference}/paypal/capture`)
+        .send({ orderId: '5O190127TN364715T' })
+        .expect(503);
+    });
+
+    /**
+     * The form must not offer a gateway that cannot take money — that is how
+     * `CARD` once produced bookings that dead-ended on a 503 payment screen.
+     */
+    it('leaves PayPal off the offered payment methods', async () => {
+      const response = await request(server).get('/api/v1/checkout/payment-methods').expect(200);
+
+      expect(response.body.data.methods).toEqual(['CASH', 'PAY_LATER']);
+    });
+
+    it('refuses a PayPal booking outright rather than creating one that cannot be paid', async () => {
+      const added = await request(server)
+        .post('/api/v1/cart/items')
+        .send({ slug: fixture.tourSlug, quantity: 1 })
+        .expect(201);
+
+      const response = await request(server)
+        .post('/api/v1/checkout')
+        .set('Cookie', cookieFrom(added.headers, 'prt_cart') ?? '')
+        .send({
+          fullName: 'Ada Lovelace',
+          email: 'ada@example.test',
+          ticketHolders: [{ firstName: 'Ada', lastName: 'Lovelace' }],
+          paymentMethod: 'PAYPAL',
+        })
+        .expect(409);
+
+      expect(response.body.message).toMatch(/not available/i);
+
+      // And nothing was written: a booking waiting on a gateway that cannot
+      // take money is one the sweeper cancels half an hour later.
+      expect(
+        await harness.prisma.booking.count({ where: { reference: { not: 'BK-PAY-1' } } }),
+      ).toBe(0);
     });
 
     it('leaves the booking untouched when a webhook is refused', async () => {

@@ -48,6 +48,7 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = Object.fromEntries(
 const PAYMENT_PROVIDER_LABELS: Record<string, string> = {
   STRIPE: 'Stripe',
   REVOLUT: 'Revolut',
+  PAYPAL: 'PayPal',
 };
 
 /**

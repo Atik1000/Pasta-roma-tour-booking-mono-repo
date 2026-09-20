@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { Button, Card, CardContent, Skeleton } from '@pasta/ui';
 import { isApiClientError, type PaymentIntentResult } from '@pasta/api-client';
 import { formatMoney } from '@pasta/utils';
+import { PayPalButtons, PayPalScriptProvider } from '@paypal/react-paypal-js';
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { AlertTriangle, Lock, ShieldCheck } from 'lucide-react';
@@ -14,7 +15,7 @@ import { AlertTriangle, Lock, ShieldCheck } from 'lucide-react';
 import { browserApi } from '@/lib/browser-api';
 
 /**
- * The card step, for whichever gateway this deployment is using.
+ * The payment step, for whichever gateway this deployment is using.
  *
  * The branch is on `provider`, which the API decides — not on a build-time
  * flag. That matters for the same reason the keys come from the API: switching
@@ -22,9 +23,11 @@ import { browserApi } from '@/lib/browser-api';
  * booking that was started under one provider must not find a page hard-wired
  * to the other.
  *
- * Both paths share one rule: confirmation is *not* taken from what the gateway
- * tells the browser. Either way the page hands off to the confirmation screen,
- * which polls the API, because only the signed webhook can mark a booking paid.
+ * All three paths share one rule: this page never decides that a booking is
+ * paid. Stripe and Revolut hand off to the confirmation screen, which polls the
+ * API and waits for the signed webhook. PayPal asks the API to capture and then
+ * hands off to the same screen — the answer comes from the server's own call to
+ * PayPal, never from anything the buttons reported.
  */
 
 // --- Stripe ------------------------------------------------------------------
@@ -228,6 +231,91 @@ function RevolutPanel({
   );
 }
 
+// --- PayPal ------------------------------------------------------------------
+
+/**
+ * PayPal's buttons, mounted against the order the API opened.
+ *
+ * `createOrder` hands back an id this server already minted rather than
+ * minting one here, which is the whole point: the amount is decided by the
+ * booking, on the server, and the browser never gets to name a figure.
+ *
+ * `onApprove` does not mark anything paid. It asks the API to capture, and the
+ * API calls PayPal itself and believes only what comes back — so a tampered
+ * browser can trigger a capture it was going to trigger anyway and nothing
+ * else.
+ */
+function PayPalPanel({
+  reference,
+  intent,
+}: {
+  reference: string;
+  intent: Extract<PaymentIntentResult, { provider: 'paypal' }> & { clientId: string };
+}) {
+  const router = useRouter();
+  const [error, setError] = React.useState<string | null>(null);
+
+  const confirmed = React.useCallback(() => {
+    router.push(`/booking-confirmed?reference=${encodeURIComponent(reference)}`);
+  }, [reference, router]);
+
+  return (
+    <PayPalScriptProvider
+      options={{
+        clientId: intent.clientId,
+        currency: intent.currency,
+        // The buttons only; the card fields are a separate onboarding and are
+        // not enabled on this account.
+        components: 'buttons',
+        intent: 'capture',
+      }}
+    >
+      <div className="flex flex-col gap-5">
+        <p className="text-muted-foreground text-sm">
+          You&apos;ll confirm the payment in a secure PayPal window. Nothing is charged until you
+          approve it there.
+        </p>
+
+        <PaymentError message={error} />
+
+        <PayPalButtons
+          // Remounts the buttons when the figure changes, so a repriced booking
+          // can never leave the old amount on screen.
+          forceReRender={[intent.orderId, intent.amountMinor, intent.currency]}
+          style={{ layout: 'vertical', shape: 'rect', label: 'pay', height: 48 }}
+          createOrder={() => Promise.resolve(intent.orderId)}
+          onApprove={async () => {
+            setError(null);
+
+            try {
+              await browserApi.checkout.capturePayPalOrder(reference, intent.orderId);
+            } catch (caught) {
+              setError(
+                isApiClientError(caught)
+                  ? caught.message
+                  : 'That payment could not be completed. Please try again.',
+              );
+              return;
+            }
+
+            // Captured, or captured and held for review. Either way the
+            // confirmation page is the place that reports which.
+            confirmed();
+          }}
+          onError={() => {
+            setError('That payment could not be completed. Please try again.');
+          }}
+          // Closing the PayPal window is not a failure — the booking is still
+          // held and the buttons stay pressable.
+          onCancel={() => setError(null)}
+        />
+
+        <Assurance gateway="PayPal" />
+      </div>
+    </PayPalScriptProvider>
+  );
+}
+
 // --- shared chrome -----------------------------------------------------------
 
 function PaymentError({ message }: { message: string | null }) {
@@ -265,11 +353,18 @@ export function PaymentStep({ reference }: { reference: string }) {
       .then((result) => {
         if (cancelled) return;
 
-        // Stripe cannot render without its publishable key. Revolut's widget
-        // only needs the order token, so a missing public key is not fatal
-        // there and must not be treated as one.
-        if (result.provider === 'stripe' && !result.publishableKey) {
-          setError('Card payment is not configured on this environment yet.');
+        /**
+         * Stripe cannot render without its publishable key and PayPal cannot
+         * load its SDK without a client id. Revolut's widget only needs the
+         * order token, so a missing public key is not fatal there and must not
+         * be treated as one.
+         */
+        const missingKey =
+          (result.provider === 'stripe' && !result.publishableKey) ||
+          (result.provider === 'paypal' && !result.clientId);
+
+        if (missingKey) {
+          setError('Online payment is not configured on this environment yet.');
           return;
         }
 
@@ -312,13 +407,21 @@ export function PaymentStep({ reference }: { reference: string }) {
   return (
     <Card>
       <CardContent className="p-6">
-        {intent.provider === 'revolut' ? (
-          <RevolutPanel reference={reference} intent={intent} />
-        ) : (
+        {intent.provider === 'revolut' && <RevolutPanel reference={reference} intent={intent} />}
+
+        {intent.provider === 'paypal' && (
+          <PayPalPanel
+            reference={reference}
+            // The guard above is what makes this safe: an intent with no client
+            // id never reaches here.
+            intent={{ ...intent, clientId: intent.clientId as string }}
+          />
+        )}
+
+        {intent.provider === 'stripe' && (
           <StripePanel
             reference={reference}
-            // The guard above is what makes this safe: an intent with no
-            // publishable key never reaches here.
+            // Likewise: an intent with no publishable key never reaches here.
             intent={{ ...intent, publishableKey: intent.publishableKey as string }}
           />
         )}

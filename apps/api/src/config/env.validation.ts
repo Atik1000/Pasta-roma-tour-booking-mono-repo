@@ -45,14 +45,15 @@ export const envSchema = z.object({
   JWT_REFRESH_TTL: z.string().default('30d'),
 
   /**
-   * Which gateway opens *new* card payments.
+   * Which gateway opens *new* online payments.
    *
-   * Both are wired at once and both webhooks stay live, because switching
-   * providers cannot retroactively move the payments the other one is holding:
-   * a booking paid through Stripe last week must still be refundable through
-   * Stripe after the switch. This only decides where the next payment goes.
+   * All three are wired at once and all three webhooks stay live, because
+   * switching providers cannot retroactively move the payments the others are
+   * holding: a booking paid through Stripe last week must still be refundable
+   * through Stripe after the switch. This only decides where the next payment
+   * goes.
    */
-  PAYMENT_PROVIDER: z.enum(['revolut', 'stripe']).default('revolut'),
+  PAYMENT_PROVIDER: z.enum(['paypal', 'revolut', 'stripe']).default('revolut'),
 
   STRIPE_SECRET_KEY: optional(z.string()),
   STRIPE_PUBLISHABLE_KEY: optional(z.string()),
@@ -68,6 +69,27 @@ export const envSchema = z.object({
    * both for the overlap is what makes a rotation a non-event.
    */
   REVOLUT_WEBHOOK_SECRET: optional(z.string()),
+
+  /**
+   * Sandbox by default, exactly as Revolut is — a live gateway is a deliberate
+   * act, not something a missing variable falls into. The mode picks the API
+   * host (`api-m.sandbox.paypal.com` / `api-m.paypal.com`) and the SDK the
+   * browser loads, so the two can never be set apart.
+   */
+  PAYPAL_MODE: z.enum(['sandbox', 'live']).default('sandbox'),
+  /** Safe in the browser: it identifies the merchant and can only open orders. */
+  PAYPAL_CLIENT_ID: optional(z.string()),
+  /** Server-side only. Never sent to a browser, never committed. */
+  PAYPAL_CLIENT_SECRET: optional(z.string()),
+  /**
+   * The id PayPal assigns the webhook you register. It is not a secret and it
+   * is not a signing key — it is what `verify-webhook-signature` checks the
+   * transmission against, so without it no event can be authenticated and the
+   * endpoint refuses every one of them.
+   *
+   * Sandbox and live webhooks are separate registrations with separate ids.
+   */
+  PAYPAL_WEBHOOK_ID: optional(z.string()),
 
   SMTP_URL: optional(z.string()),
   MAIL_FROM: z.string().default('Pasta Roma Tour <no-reply@pastaromatour.com>'),

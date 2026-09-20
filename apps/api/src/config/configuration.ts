@@ -146,8 +146,34 @@ export const revolutConfig = registerAs('revolut', () => {
   };
 });
 
+export const paypalConfig = registerAs('paypal', () => {
+  const parsed = env();
+  return {
+    /**
+     * Derived from the mode rather than configured separately, for the same
+     * reason Revolut's environment is derived from its API host: the server and
+     * the browser must agree about which PayPal they are talking to, and an
+     * order created in sandbox means nothing to production. Setting them apart
+     * is the only thing an extra variable would make possible.
+     */
+    apiUrl:
+      parsed.PAYPAL_MODE === 'live'
+        ? 'https://api-m.paypal.com'
+        : 'https://api-m.sandbox.paypal.com',
+    mode: parsed.PAYPAL_MODE,
+    // Safe to hand to the browser — it identifies the merchant and can only
+    // open an order this server has to capture before any money moves.
+    clientId: parsed.PAYPAL_CLIENT_ID,
+    clientSecret: parsed.PAYPAL_CLIENT_SECRET,
+    /** Not a signing key: what `verify-webhook-signature` checks against. */
+    webhookId: parsed.PAYPAL_WEBHOOK_ID,
+    /** Both halves, because one without the other cannot call the API at all. */
+    enabled: Boolean(parsed.PAYPAL_CLIENT_ID && parsed.PAYPAL_CLIENT_SECRET),
+  };
+});
+
 export const paymentsConfig = registerAs('payments', () => ({
-  /** Where new card payments are opened. Existing ones stay with their own. */
+  /** Where new online payments are opened. Existing ones stay with their own. */
   provider: env().PAYMENT_PROVIDER,
 }));
 
@@ -167,6 +193,7 @@ export const configurations = [
   mailConfig,
   stripeConfig,
   revolutConfig,
+  paypalConfig,
   paymentsConfig,
   throttleConfig,
 ];

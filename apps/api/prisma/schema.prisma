@@ -59,10 +59,11 @@ enum PaymentStatus {
   REFUNDED
 }
 
-/// The card gateway a payment was opened with.
+/// The gateway a payment was opened with.
 enum PaymentProvider {
   STRIPE
   REVOLUT
+  PAYPAL
 }
 
 enum PaymentMethod {
@@ -419,9 +420,14 @@ model Payment {
   amount   Int
   currency CurrencyCode    @default(EUR)
 
-  /// The gateway's own id for this payment — a Stripe PaymentIntent id, or a
-  /// Revolut order id. Unique so webhook replays cannot double-apply.
+  /// The gateway's own id for this payment — a Stripe PaymentIntent id, a
+  /// Revolut order id, or a PayPal order id. Unique so webhook replays cannot
+  /// double-apply.
   providerIntentId String? @unique
+  /// The gateway's id for the money itself, as distinct from the intent to
+  /// take it: a Stripe charge, a Revolut order, a PayPal *capture*. PayPal
+  /// reports a refund against the capture rather than the order, so this is
+  /// also how a refund event finds its way back to the payment.
   transactionId    String?
   failureReason    String?
 

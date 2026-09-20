@@ -58,8 +58,48 @@ export function CheckoutForm() {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [formError, setFormError] = React.useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = React.useState<Record<string, string>>({});
-  const [paymentMethod, setPaymentMethod] = React.useState<CheckoutPaymentMethod>('CASH');
+  /**
+   * `null` until the API has said what it is offering.
+   *
+   * Nothing is rendered in the fieldset before then. Guessing a default and
+   * correcting it a moment later would move the selected radio under whoever
+   * was quick enough to have already chosen.
+   */
+  const [methods, setMethods] = React.useState<CheckoutPaymentMethod[] | null>(null);
+  const [paymentMethod, setPaymentMethod] = React.useState<CheckoutPaymentMethod | null>(null);
   const { currency } = useCurrency();
+
+  /**
+   * Which ways to pay are on offer, asked rather than assumed.
+   *
+   * PayPal appears only when the API has credentials for it, so this page never
+   * offers a payment screen that would answer 503 — and picks up a gateway
+   * being switched on or off without the site being rebuilt.
+   */
+  React.useEffect(() => {
+    let cancelled = false;
+
+    void browserApi.checkout
+      .paymentMethods()
+      .then(({ methods: offered }) => {
+        if (cancelled) return;
+        setMethods(offered);
+        // The first on offer, which puts PayPal at the top while it is
+        // available and falls back to cash when it is not.
+        setPaymentMethod((current) => current ?? offered[0] ?? 'CASH');
+      })
+      .catch(() => {
+        // The endpoint is the only way to know, so a failure falls back to the
+        // two methods that need no gateway at all rather than to none.
+        if (cancelled) return;
+        setMethods(['CASH', 'PAY_LATER']);
+        setPaymentMethod((current) => current ?? 'CASH');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -123,7 +163,7 @@ export function CheckoutForm() {
     setFormError(null);
     setFieldErrors({});
 
-    if (!cart || !fullName.trim() || !emailValid || !holdersComplete) return;
+    if (!cart || !paymentMethod || !fullName.trim() || !emailValid || !holdersComplete) return;
 
     setIsSubmitting(true);
 
@@ -139,9 +179,13 @@ export function CheckoutForm() {
       // The server empties the cart once the booking exists.
       clearCartCount();
 
-      // Both offered methods settle away from the site, so the booking is
-      // already confirmed and there is no payment step to send anyone to.
-      router.push(`/booking-confirmed?reference=${encodeURIComponent(result.reference)}`);
+      /**
+       * The server decides where this goes, not the method the form happens to
+       * hold: a booking that still owes money goes to the payment page, and one
+       * that settles away from the site is already confirmed.
+       */
+      const next = result.requiresPayment ? '/checkout/pay' : '/booking-confirmed';
+      router.push(`${next}?reference=${encodeURIComponent(result.reference)}`);
     } catch (caught) {
       if (isApiClientError(caught)) {
         setFormError(caught.message);
@@ -370,22 +414,37 @@ export function CheckoutForm() {
               <legend className="sr-only">How would you like to pay?</legend>
               <p className="mb-2.5 text-sm font-medium">How would you like to pay?</p>
 
-              <RadioGroup
-                className="flex flex-col gap-2"
-                value={paymentMethod}
-                onValueChange={(next) => setPaymentMethod(next as CheckoutPaymentMethod)}
-              >
-                <RadioCard
-                  value="CASH"
-                  label="Pay cash at the meeting point"
-                  description={`Bring ${formatMoney(cart.totalMinor, cart.currency)} on the day. Your seats are confirmed straight away.`}
-                />
-                <RadioCard
-                  value="PAY_LATER"
-                  label="Pay later"
-                  description={`Reserve now and settle ${formatMoney(cart.totalMinor, cart.currency)} before the tour. Your seats are confirmed straight away.`}
-                />
-              </RadioGroup>
+              {methods && paymentMethod ? (
+                <RadioGroup
+                  className="flex flex-col gap-2"
+                  value={paymentMethod}
+                  onValueChange={(next) => setPaymentMethod(next as CheckoutPaymentMethod)}
+                >
+                  {methods.includes('PAYPAL') && (
+                    <RadioCard
+                      value="PAYPAL"
+                      label="Pay now with PayPal"
+                      description={`Pay ${formatMoney(cart.totalMinor, cart.currency)} securely through PayPal. Your booking is held for 30 minutes while you do.`}
+                    />
+                  )}
+                  {methods.includes('CASH') && (
+                    <RadioCard
+                      value="CASH"
+                      label="Pay cash at the meeting point"
+                      description={`Bring ${formatMoney(cart.totalMinor, cart.currency)} on the day. Your seats are confirmed straight away.`}
+                    />
+                  )}
+                  {methods.includes('PAY_LATER') && (
+                    <RadioCard
+                      value="PAY_LATER"
+                      label="Pay later"
+                      description={`Reserve now and settle ${formatMoney(cart.totalMinor, cart.currency)} before the tour. Your seats are confirmed straight away.`}
+                    />
+                  )}
+                </RadioGroup>
+              ) : (
+                <Skeleton className="h-36 w-full" />
+              )}
             </fieldset>
 
             <div className="flex flex-col gap-2.5">
@@ -394,9 +453,10 @@ export function CheckoutForm() {
                 size="lg"
                 block
                 isLoading={isSubmitting}
+                disabled={!paymentMethod}
                 leadingIcon={<Lock aria-hidden />}
               >
-                Confirm Booking
+                {paymentMethod === 'PAYPAL' ? 'Continue to PayPal' : 'Confirm Booking'}
               </Button>
               <Button
                 type="button"
@@ -417,15 +477,18 @@ export function CheckoutForm() {
             ) : null}
 
             {/* The card-brand row that sat here is gone with the card option:
-                showing VISA and Amex marks beside two off-platform methods
-                promises a way to pay that this checkout cannot take. */}
+                showing VISA and Amex marks beside methods this checkout does
+                not take promises a way to pay that it cannot honour. PayPal
+                puts its own marks on its own buttons, on the next page. */}
             <p className="text-muted-foreground flex items-center justify-center gap-1.5 text-xs">
               <ShieldCheck className="text-success size-4" aria-hidden />
               Secure checkout. Your data is protected.
             </p>
 
             <p className="text-muted-foreground text-center text-xs">
-              No payment is taken now — your seats are confirmed as soon as you book.
+              {paymentMethod === 'PAYPAL'
+                ? 'You pay on the next page. Card details never reach our servers.'
+                : 'No payment is taken now — your seats are confirmed as soon as you book.'}
             </p>
           </CardContent>
         </Card>
