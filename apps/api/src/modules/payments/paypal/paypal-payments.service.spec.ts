@@ -397,6 +397,27 @@ describe('PayPalPaymentsService', () => {
       expect(paypal.createOrder).toHaveBeenCalledTimes(1);
     });
 
+    /**
+     * A restricted or unverified merchant account is PayPal's answer, not a
+     * crash here. It has to reach the traveller as "pick another method",
+     * because a 500 reads as a broken checkout and tells nobody what to fix.
+     */
+    it('surfaces a merchant-account refusal as a payment error, not a 500', async () => {
+      const { service, paypal } = makeStubs();
+      paypal.createOrder.mockRejectedValueOnce(
+        new PayPalApiError(422, '{"details":[{"issue":"PAYEE_ACCOUNT_RESTRICTED"}]}'),
+      );
+
+      await expect(service.createIntent('BK-1')).rejects.toBeInstanceOf(BusinessException);
+    });
+
+    it('lets an unexpected failure through rather than dressing it up', async () => {
+      const { service, paypal } = makeStubs();
+      paypal.createOrder.mockRejectedValueOnce(new PayPalApiError(500, 'gateway exploded'));
+
+      await expect(service.createIntent('BK-1')).rejects.toBeInstanceOf(PayPalApiError);
+    });
+
     it('refuses a booking that is already paid', async () => {
       const { service, booking } = makeStubs();
       booking.paymentStatus = 'PAID';

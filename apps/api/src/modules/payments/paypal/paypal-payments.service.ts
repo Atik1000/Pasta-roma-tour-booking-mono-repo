@@ -118,13 +118,42 @@ export class PayPalPaymentsService {
       order = await this.reusableOrder(existing.providerIntentId, booking.total, booking.currency);
     }
 
-    order ??= await this.paypal.createOrder({
-      amount: booking.total,
-      currency: booking.currency,
-      description: `Pasta Roma Tour booking ${booking.reference}`,
-      merchantOrderReference: booking.reference,
-      brandName: 'Pasta Roma Tour',
-    });
+    order ??= await this.paypal
+      .createOrder({
+        amount: booking.total,
+        currency: booking.currency,
+        description: `Pasta Roma Tour booking ${booking.reference}`,
+        merchantOrderReference: booking.reference,
+        brandName: 'Pasta Roma Tour',
+      })
+      .catch((error: unknown) => {
+        /**
+         * PayPal refusing to open an order is not this server failing.
+         *
+         * The refusals that matter here are about the *merchant* account, not
+         * the traveller: `PAYEE_ACCOUNT_RESTRICTED` while a limitation is open,
+         * a currency the account cannot accept, an unverified account. Letting
+         * the raw error through turned all of them into a 500 — which tells the
+         * traveller "an unexpected error occurred", tells the operator nothing,
+         * and looks like a bug in the checkout rather than a PayPal account
+         * that needs attention.
+         *
+         * The specifics are logged, never returned: they name the merchant
+         * account and are written for us, not for whoever is trying to pay.
+         */
+        if (error instanceof PayPalApiError && error.status >= 400 && error.status < 500) {
+          this.logger.error(
+            `PayPal refused to open an order for booking ${booking.reference}. This is an account-side problem, not a code one: ${error.body}`,
+          );
+
+          throw new BusinessException(
+            BusinessErrorCode.PaymentFailed,
+            'PayPal is not able to take payments for us at the moment. Please choose another way to pay, or contact us and we will arrange it.',
+          );
+        }
+
+        throw error;
+      });
 
     await this.ledger.recordPending({
       bookingId: booking.id,
