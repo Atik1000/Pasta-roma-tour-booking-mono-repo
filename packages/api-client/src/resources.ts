@@ -287,11 +287,12 @@ export interface CheckoutPayload {
 }
 
 /**
- * The two methods a traveller can pick; the rest of `PaymentMethod` describes
- * how staff recorded a payment after the fact. `CARD` is not offered while
- * Stripe is unconfigured — see `CHECKOUT_PAYMENT_METHODS` on the API.
+ * The methods a traveller can pick; the rest of `PaymentMethod` describes how
+ * staff recorded a payment after the fact. Which of these are actually on offer
+ * is a question for `checkout.paymentMethods()` — a gateway with no credentials
+ * is accepted by the type and refused by the server.
  */
-export type CheckoutPaymentMethod = 'CASH' | 'PAY_LATER';
+export type CheckoutPaymentMethod = 'PAYPAL' | 'CASH' | 'PAY_LATER';
 
 export interface CheckoutResult {
   reference: string;
@@ -301,22 +302,54 @@ export interface CheckoutResult {
   status: string;
   paymentMethod: CheckoutPaymentMethod;
   paymentIntentClientSecret: string | null;
+  /**
+   * Whether the booking still owes an online payment. True only for `PAYPAL`,
+   * and it is what sends the browser to `/checkout/pay` instead of straight to
+   * the confirmation screen.
+   */
+  requiresPayment: boolean;
 }
 
 export class CheckoutResource {
   constructor(private readonly http: HttpClient) {}
+
+  /**
+   * The ways to pay this deployment is currently offering.
+   *
+   * Asked rather than assumed: the credentials that decide it never leave the
+   * API, so a form built knowing the answer would go on offering a gateway the
+   * day its keys were pulled.
+   */
+  paymentMethods(): Promise<{ methods: CheckoutPaymentMethod[] }> {
+    return this.http.get<{ methods: CheckoutPaymentMethod[] }>('/checkout/payment-methods');
+  }
 
   create(payload: CheckoutPayload): Promise<CheckoutResult> {
     return this.http.post<CheckoutResult>('/checkout', payload);
   }
 
   /**
-   * Starts card payment. Returns whatever the configured gateway needs the
-   * browser to hold — a Stripe client secret, or a Revolut order token. Card
-   * details never touch this application's server either way.
+   * Starts an online payment. Returns whatever the configured gateway needs the
+   * browser to hold — a Stripe client secret, a Revolut order token, or a
+   * PayPal order id. Card details never touch this application's server
+   * whichever it is.
    */
   paymentIntent(reference: string): Promise<PaymentIntentResult> {
     return this.http.post<PaymentIntentResult>(`/checkout/${reference}/payment-intent`);
+  }
+
+  /**
+   * Asks the API to capture a PayPal order the buyer has approved.
+   *
+   * Not a claim that the payment succeeded — the browser is in no position to
+   * make one. The API calls PayPal's capture endpoint itself and believes only
+   * what comes back, so this request is a trigger and its answer is the
+   * verdict.
+   */
+  capturePayPalOrder(reference: string, orderId: string): Promise<{ status: string }> {
+    return this.http.post<{ status: string }>(`/checkout/${reference}/paypal/capture`, {
+      orderId,
+    });
   }
 
   /** Polled after payment: the webhook, not the browser, confirms a booking. */
@@ -326,16 +359,16 @@ export class CheckoutResource {
 }
 
 /** Which gateway a payment was opened with. */
-export type PaymentProviderValue = 'STRIPE' | 'REVOLUT';
+export type PaymentProviderValue = 'STRIPE' | 'REVOLUT' | 'PAYPAL';
 
 /**
- * What the payment page needs to start a card payment.
+ * What the payment page needs to start an online payment.
  *
- * A discriminated union, because the two gateways genuinely need different
+ * A discriminated union, because the three gateways genuinely need different
  * things in the browser: Stripe mounts Elements against a client secret,
- * Revolut mounts its widget against an order token. Flattening them into one
- * optional-everything object would only move the branch out of the type system
- * and into a runtime guess.
+ * Revolut mounts its widget against an order token, PayPal mounts its buttons
+ * against an order id. Flattening them into one optional-everything object
+ * would only move the branch out of the type system and into a runtime guess.
  */
 export type PaymentIntentResult =
   | {
@@ -351,6 +384,18 @@ export type PaymentIntentResult =
       token: string;
       publicKey: string | null;
       environment: 'sandbox' | 'prod';
+      amountMinor: number;
+      currency: CurrencyCode;
+    }
+  | {
+      provider: 'paypal';
+      /**
+       * The order the buttons approve. Unlike a Stripe client secret it
+       * authorises nothing on its own — approving it only lets the API capture.
+       */
+      orderId: string;
+      clientId: string | null;
+      environment: 'sandbox' | 'live';
       amountMinor: number;
       currency: CurrencyCode;
     };

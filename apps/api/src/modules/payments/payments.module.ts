@@ -19,8 +19,11 @@ import type { Request } from 'express';
 import { Public, Roles } from '../../common/decorators/auth.decorators';
 import { DocumentsModule } from '../documents/documents.module';
 
+import { CapturePayPalOrderDto } from './capture-paypal-order.dto';
 import { PaymentLedgerService } from './payment-ledger.service';
 import { PaymentsService } from './payments.service';
+import { PayPalClient } from './paypal/paypal.client';
+import { PayPalPaymentsService } from './paypal/paypal-payments.service';
 import { RefundDto } from './refund.dto';
 import { RevolutClient } from './revolut/revolut.client';
 import { RevolutPaymentsService } from './revolut/revolut-payments.service';
@@ -34,6 +37,7 @@ export class PaymentsController {
     private readonly payments: PaymentsService,
     private readonly stripe: StripePaymentsService,
     private readonly revolut: RevolutPaymentsService,
+    private readonly paypal: PayPalPaymentsService,
   ) {}
 
   /**
@@ -62,6 +66,28 @@ export class PaymentsController {
   @ApiOperation({ summary: 'Payment status for a booking reference' })
   status(@Param('reference') reference: string) {
     return this.payments.publicStatus(reference);
+  }
+
+  /**
+   * Takes the money for a PayPal order the buyer has just approved.
+   *
+   * The browser asks for this; it does not assert anything by asking. The
+   * server checks the order is the one it opened for this booking, calls
+   * PayPal's capture endpoint itself, and believes only what comes back — so
+   * this is not the "browser says it paid" shortcut the webhook rules exist to
+   * rule out. See the note on `PayPalPaymentsService`.
+   *
+   * Public and rate-limited for the same reason the intent route is: a booking
+   * reference is not a secret, so this must not be a free channel for probing
+   * the gateway.
+   */
+  @Post('checkout/:reference/paypal/capture')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Capture the PayPal order approved for a booking' })
+  capturePayPal(@Param('reference') reference: string, @Body() dto: CapturePayPalOrderDto) {
+    return this.paypal.capture(reference, dto.orderId);
   }
 
   /**
@@ -111,6 +137,36 @@ export class PaymentsController {
   ) {
     return this.revolut.handleWebhook(request.rawBody ?? Buffer.alloc(0), signature, timestamp);
   }
+
+  /**
+   * PayPal's callback, on its own path.
+   *
+   * Register this URL in the PayPal developer dashboard under
+   * Apps & Credentials → your app → Webhooks, subscribed to
+   * `CHECKOUT.ORDER.APPROVED`, `PAYMENT.CAPTURE.COMPLETED`,
+   * `PAYMENT.CAPTURE.PENDING`, `PAYMENT.CAPTURE.DENIED`,
+   * `PAYMENT.CAPTURE.REVERSED` and `PAYMENT.CAPTURE.REFUNDED`. Sandbox and live
+   * are separate registrations with separate ids; put the one PayPal shows into
+   * `PAYPAL_WEBHOOK_ID`, or every event is refused.
+   *
+   * Whole headers rather than five parameters: all five are signed together and
+   * are verified as a set, so splitting them here would only be an opportunity
+   * to forward four of them.
+   *
+   * The raw body is required because the signature covers the exact bytes sent;
+   * a re-serialised JSON object would not verify.
+   */
+  @Post('payments/webhook/paypal')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @SkipThrottle()
+  @ApiExcludeEndpoint()
+  paypalWebhook(
+    @Req() request: RawBodyRequest<Request>,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ) {
+    return this.paypal.handleWebhook(request.rawBody ?? Buffer.alloc(0), headers);
+  }
 }
 
 @ApiTags('Payments')
@@ -135,11 +191,13 @@ export class AdminPaymentsController {
   providers: [
     stripeProvider,
     RevolutClient,
+    PayPalClient,
     PaymentLedgerService,
     StripePaymentsService,
     RevolutPaymentsService,
+    PayPalPaymentsService,
     PaymentsService,
   ],
-  exports: [PaymentsService],
+  exports: [PaymentsService, PayPalClient],
 })
 export class PaymentsModule {}

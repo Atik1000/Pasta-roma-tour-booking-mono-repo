@@ -9,15 +9,15 @@ import { MailService } from '../mail/mail.service';
  * The bookkeeping half of taking a payment — everything that is true whichever
  * gateway the money went through.
  *
- * Stripe and Revolut differ only in how a card is charged: which booking may be
- * charged, what a captured payment does to that booking, how a replayed webhook
- * must be ignored, and when the tickets go out are the same rules either way.
- * They live here once so the two providers cannot drift apart on them — a
- * second copy of "mark the booking paid" is a second place for the expiry
- * sweeper to be forgotten.
+ * Stripe, Revolut and PayPal differ only in how the money is taken: which
+ * booking may be charged, what a captured payment does to that booking, how a
+ * replayed webhook must be ignored, and when the tickets go out are the same
+ * rules whichever gateway took it. They live here once so the three providers
+ * cannot drift apart on them — a second copy of "mark the booking paid" is a
+ * second place for the expiry sweeper to be forgotten.
  */
 
-export type PaymentProviderName = 'STRIPE' | 'REVOLUT';
+export type PaymentProviderName = 'STRIPE' | 'REVOLUT' | 'PAYPAL';
 
 /** A booking that may have a card payment opened against it. */
 export interface PayableBooking {
@@ -130,13 +130,22 @@ export class PaymentLedgerService {
     providerIntentId: string;
     amount: number;
     currency: string;
+    /**
+     * How the traveller is paying, as opposed to who is processing it. PayPal
+     * is a wallet, not a card, and the distinction is what an operator reading
+     * the booking needs: `provider` says which dashboard holds the money,
+     * `method` says what the traveller actually used.
+     */
+    method?: 'CARD' | 'PAYPAL';
   }): Promise<void> {
+    const method = input.method ?? 'CARD';
+
     await this.prisma.payment.upsert({
       // A uuid that cannot exist, so "no existing row" takes the create branch.
       where: { id: input.paymentId ?? '00000000-0000-4000-8000-000000000000' },
       create: {
         bookingId: input.bookingId,
-        method: 'CARD',
+        method,
         status: 'PENDING',
         provider: input.provider,
         amount: input.amount,
@@ -144,6 +153,7 @@ export class PaymentLedgerService {
         providerIntentId: input.providerIntentId,
       },
       update: {
+        method,
         provider: input.provider,
         providerIntentId: input.providerIntentId,
         amount: input.amount,
@@ -265,6 +275,24 @@ export class PaymentLedgerService {
     ]);
   }
 
+  /**
+   * The payment holding a given gateway transaction, by its *own* id rather
+   * than the intent's.
+   *
+   * PayPal reports a refund against the capture, not against the order this
+   * application stored — so a refund event arrives naming something the
+   * `providerIntentId` index has never seen, and the only way back to the
+   * payment is the capture id written when it was taken.
+   */
+  async intentIdForTransaction(transactionId: string): Promise<string | null> {
+    const payment = await this.prisma.payment.findFirst({
+      where: { transactionId },
+      select: { providerIntentId: true },
+    });
+
+    return payment?.providerIntentId ?? null;
+  }
+
   /** What the gateway's webhook needs to check its own claim against. */
   async paymentSnapshot(providerIntentId: string): Promise<{
     amount: number;
@@ -275,6 +303,44 @@ export class PaymentLedgerService {
       where: { providerIntentId },
       select: { amount: true, currency: true, status: true },
     });
+  }
+
+  /**
+   * The same snapshot reached from the booking side, with the gateway id the
+   * booking is actually waiting on.
+   *
+   * PayPal is the one flow where the browser hands this server an id and asks
+   * it to act: that id has to be checked against the one opened for *this*
+   * booking before a capture is attempted, or a crafted request could settle a
+   * booking with somebody else's order.
+   */
+  async paymentSnapshotForBooking(reference: string): Promise<{
+    provider: PaymentProviderName;
+    providerIntentId: string | null;
+    amount: number;
+    currency: string;
+    status: string;
+  } | null> {
+    const booking = await this.prisma.booking.findFirst({
+      where: { reference, deletedAt: null },
+      select: {
+        payments: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            provider: true,
+            providerIntentId: true,
+            amount: true,
+            currency: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    const payment = booking?.payments[0];
+
+    return payment ? { ...payment, provider: payment.provider as PaymentProviderName } : null;
   }
 
   /**
@@ -372,6 +438,10 @@ export class PaymentLedgerService {
     id: string;
     provider: PaymentProviderName;
     providerIntentId: string;
+    /** The gateway's id for the money itself — a PayPal refund is made against it. */
+    transactionId: string | null;
+    /** The booking this belongs to, so a refund can be traced in the dashboard. */
+    reference: string;
     currency: string;
     amount: number;
     refundedAmount: number;
@@ -401,6 +471,8 @@ export class PaymentLedgerService {
       id: payment.id,
       provider: payment.provider as PaymentProviderName,
       providerIntentId: payment.providerIntentId,
+      transactionId: payment.transactionId,
+      reference: payment.booking.reference,
       currency: payment.currency,
       amount: payment.amount,
       refundedAmount: payment.refundedAmount,

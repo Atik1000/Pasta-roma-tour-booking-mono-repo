@@ -19,11 +19,14 @@ type Phase = 'waiting' | 'paid' | 'unpaid' | 'payOnArrival' | 'payLater' | 'unkn
 /**
  * What actually happened to the booking, according to the API.
  *
- * Stripe tells the *browser* when a card is accepted, but only the signed
- * webhook may mark a booking paid — a browser can be closed, replayed or
- * lied to. So this polls the server rather than trusting the redirect, and
- * says "processing" in the gap between the two, which is a real state and is
- * usually a second or two.
+ * A gateway tells the *browser* when a payment is accepted, but the browser is
+ * never what marks a booking paid — it can be closed, replayed or lied to. So
+ * this polls the server rather than trusting the hand-off, and says
+ * "processing" in the gap between the two, which is a real state and is usually
+ * a second or two.
+ *
+ * The gap is widest with PayPal held for review, and shortest when the capture
+ * call had already written the row before this page mounted.
  */
 export function ConfirmationStatus({ reference }: { reference: string }) {
   const [phase, setPhase] = React.useState<Phase>('waiting');
@@ -46,9 +49,10 @@ export function ConfirmationStatus({ reference }: { reference: string }) {
         }
 
         /**
-         * Neither offered method settles online, so neither ever turns PAID
-         * here. Polling for that would spin for thirty seconds and then tell
-         * the traveller their confirmed booking is unpaid and needs a card.
+         * Neither of these settles online, so neither ever turns PAID here.
+         * Polling for that would spin for thirty seconds and then tell the
+         * traveller their confirmed booking is unpaid and needs paying again.
+         * An online method — PAYPAL — falls through and is polled for.
          */
         if (result.paymentMethod === 'CASH') {
           setPhase('payOnArrival');

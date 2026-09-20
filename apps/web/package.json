@@ -18,6 +18,7 @@
     "@pasta/types": "workspace:*",
     "@pasta/ui": "workspace:*",
     "@pasta/utils": "workspace:*",
+    "@paypal/react-paypal-js": "^8.9.2",
     "@revolut/checkout": "^1.1.25",
     "@stripe/react-stripe-js": "^6.8.0",
     "@stripe/stripe-js": "^9.12.1",

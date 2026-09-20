@@ -45,6 +45,26 @@ interface Advanced {
 
 const NO_ADVANCED: Advanced = { from: '', to: '' };
 
+/**
+ * Names the gateways and wallets spell for themselves.
+ *
+ * `humanizeEnum` would render these "Paypal" and "Apple Pay" — right for a
+ * status, wrong for a brand an operator is about to search a dashboard for.
+ */
+const PAYMENT_PROVIDER_LABELS: Record<string, string> = {
+  STRIPE: 'Stripe',
+  REVOLUT: 'Revolut',
+  PAYPAL: 'PayPal',
+};
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  PAYPAL: 'PayPal',
+  APPLE_PAY: 'Apple Pay',
+};
+
+/** Methods taken through a gateway, and so worth naming one under. */
+const ONLINE_METHODS = new Set(['CARD', 'PAYPAL', 'APPLE_PAY']);
+
 export function PaymentsTable() {
   const [search, setSearch] = React.useState('');
   const [status, setStatus] = React.useState('ALL');
@@ -151,18 +171,19 @@ export function PaymentsTable() {
         /**
          * The gateway is shown under the method, not instead of it.
          *
-         * With two card gateways live at once, "Card" no longer says where the
+         * With several gateways live at once, "Card" no longer says where the
          * money is — and a refund goes back through whichever one took it. An
          * operator chasing a refund needs to know which dashboard to open.
-         * Only card payments have one; cash and pay-later have no gateway to
-         * name.
+         * Only payments taken online have a gateway; cash and pay-later have
+         * none to name.
          */
         cell: ({ row }) => (
           <span className="block">
-            {humanizeEnum(row.original.method)}
-            {row.original.method === 'CARD' ? (
+            {PAYMENT_METHOD_LABELS[row.original.method] ?? humanizeEnum(row.original.method)}
+            {ONLINE_METHODS.has(row.original.method) ? (
               <span className="text-muted-foreground block text-xs">
-                {humanizeEnum(row.original.provider)}
+                {PAYMENT_PROVIDER_LABELS[row.original.provider] ??
+                  humanizeEnum(row.original.provider)}
               </span>
             ) : null}
           </span>

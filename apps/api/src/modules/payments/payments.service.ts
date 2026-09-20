@@ -5,6 +5,7 @@ import { paymentsConfig } from '../../config/configuration';
 
 import type { PaymentIntentResult } from './payment-intent.types';
 import { PaymentLedgerService } from './payment-ledger.service';
+import { PayPalPaymentsService } from './paypal/paypal-payments.service';
 import { RevolutPaymentsService } from './revolut/revolut-payments.service';
 import { StripePaymentsService } from './stripe/stripe-payments.service';
 
@@ -31,14 +32,20 @@ export class PaymentsService {
     private readonly ledger: PaymentLedgerService,
     private readonly stripe: StripePaymentsService,
     private readonly revolut: RevolutPaymentsService,
+    private readonly paypal: PayPalPaymentsService,
     @Inject(paymentsConfig.KEY) private readonly config: ConfigType<typeof paymentsConfig>,
   ) {}
 
-  /** Starts a card payment with whichever gateway this deployment is using. */
+  /** Starts an online payment with whichever gateway this deployment is using. */
   createIntent(reference: string): Promise<PaymentIntentResult> {
-    return this.config.provider === 'stripe'
-      ? this.stripe.createIntent(reference)
-      : this.revolut.createIntent(reference);
+    switch (this.config.provider) {
+      case 'stripe':
+        return this.stripe.createIntent(reference);
+      case 'paypal':
+        return this.paypal.createIntent(reference);
+      default:
+        return this.revolut.createIntent(reference);
+    }
   }
 
   /** Provider-agnostic: it reads this application's own record, not a gateway. */
@@ -57,8 +64,13 @@ export class PaymentsService {
   async refund(paymentId: string, amountMinor?: number): Promise<{ message: string }> {
     const provider = await this.ledger.providerFor(paymentId);
 
-    return provider === 'REVOLUT'
-      ? this.revolut.refund(paymentId, amountMinor)
-      : this.stripe.refund(paymentId, amountMinor);
+    switch (provider) {
+      case 'REVOLUT':
+        return this.revolut.refund(paymentId, amountMinor);
+      case 'PAYPAL':
+        return this.paypal.refund(paymentId, amountMinor);
+      default:
+        return this.stripe.refund(paymentId, amountMinor);
+    }
   }
 }
