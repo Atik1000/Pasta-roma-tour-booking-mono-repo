@@ -91,6 +91,15 @@ services:
       REVOLUT_SECRET_KEY: ${REVOLUT_SECRET_KEY:-}
       REVOLUT_PUBLIC_KEY: ${REVOLUT_PUBLIC_KEY:-}
       REVOLUT_WEBHOOK_SECRET: ${REVOLUT_WEBHOOK_SECRET:-}
+      # Sandbox unless the host says otherwise, exactly as Revolut is: a live
+      # gateway is a deliberate act, not something a missing variable falls
+      # into. Every one of these has to be listed here — this file forwards
+      # named variables, so a key present in .env.production but absent from
+      # this list never reaches the container, and PayPal stays silently off.
+      PAYPAL_MODE: ${PAYPAL_MODE:-sandbox}
+      PAYPAL_CLIENT_ID: ${PAYPAL_CLIENT_ID:-}
+      PAYPAL_CLIENT_SECRET: ${PAYPAL_CLIENT_SECRET:-}
+      PAYPAL_WEBHOOK_ID: ${PAYPAL_WEBHOOK_ID:-}
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-Pasta Roma Tour <no-reply@pastaromatour.com>}
       THROTTLE_TTL_SECONDS: ${THROTTLE_TTL_SECONDS:-60}
